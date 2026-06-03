@@ -109,7 +109,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 | Layer | Technology |
 |---|---|
-| **Backend** | Python 3.11, FastAPI, Uvicorn |
+| **Backend** | Python 3.12, FastAPI, Uvicorn |
 | **LLM** | Gemma-2B-IT (INT4 quantized via `llama-cpp-python`) |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (in-memory, baked into container) |
@@ -125,7 +125,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 ##  Quick Start
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.12+
 - Node.js 20+
 - Docker (optional, for containerized deployment)
 - `git`
@@ -144,6 +144,8 @@ pip install -r requirements.txt
 ```
 
 ### 3. Download model weights & guidelines
+The current backend is a functional scaffold with deterministic placeholder triage rules. Model weights and guideline ingestion are reserved for the later full ML phase.
+
 ```bash
 # Download quantized Gemma-2B-IT (GGUF format)
 # Place in ./models/ directory
@@ -160,6 +162,15 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The API will be available at `http://localhost:8000`.
+
+Backend environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `Aegis_ALLOWED_ORIGINS` | `http://localhost:5173,https://pyaesonep.github.io` | Comma-separated CORS allowlist |
+| `Aegis_LOG_DIR` | `logs` | Directory for security JSONL events |
+| `Aegis_RATE_LIMIT_REQUESTS` | `10` | Requests allowed per client window |
+| `Aegis_RATE_LIMIT_WINDOW_SECONDS` | `60` | Sliding window length |
 
 ### 5. Test the API
 ```bash
@@ -215,6 +226,8 @@ The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/`.
 docker build -t aegis-md:latest .
 docker run -p 8000:8000 aegis-md:latest
 ```
+
+Cloud Run uses the container `PORT` environment variable automatically; the Docker image starts `uvicorn app.main:app` on that port.
 
 ### Deploy to Google Cloud Run
 ```bash
