@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+venv
+env
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+logs
+frontend/node_modules
+frontend/dist
+frontend/.vite
