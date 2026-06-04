@@ -12,11 +12,11 @@
 
 ##  Live Demo
 
-**[Try the live demo →](https://your-cloud-run-url.a.run.app)** *(replace with your Cloud Run URL)*
+**[Try the live demo →](coming soon)**
 
 Upload a symptom description (and optionally a skin-lesion image) to receive an informational triage urgency suggestion with explainable sources and confidence indicators.
 
-![Demo Screenshot](./assets/demo-screenshot.png)
+![Demo Screenshot](coming soon)
 
 ---
 
