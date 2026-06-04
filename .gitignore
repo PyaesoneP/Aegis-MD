@@ -16,3 +16,6 @@ frontend/dist/
 frontend/.vite/
 frontend/.env.local
 frontend/.env.*.local
+
+# Source Guidelines
+data/guidelines/*.pdf
