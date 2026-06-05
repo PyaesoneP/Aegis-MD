@@ -40,36 +40,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ##  Architecture
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   React UI      │────▶│  FastAPI Gateway│────▶│ Security Filter │
-│  (GitHub Pages) │     │  (Cloud Run)    │     │  (Middleware)   │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                       │
-                              ┌────────────────────────┘
-                              ▼
-              ┌─────────────────────────────────────────┐
-              │           Request Router                │
-              │  ┌─────────────┐    ┌────────────────┐  │
-              │  │ Text Path   │    │  Vision Path   │  │
-              │  │ ChromaDB    │    │  EfficientNet  │  │
-              │  │ + Gemma-2B  │    │  (PyTorch)     │  │
-              │  └─────────────┘    └────────────────┘  │
-              │           │                    │         │
-              │           └────────┬───────────┘         │
-              │                    ▼                     │
-              │         ┌──────────────────┐             │
-              │         │ Response Builder │             │
-              │         │ (JSON + disclaim)│             │
-              │         └──────────────────┘             │
-              └─────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌─────────────────────────────────────────┐
-              │      Prometheus + JSONL Logging         │
-              │      (Latency, Blocks, Urgency Dist)    │
-              └─────────────────────────────────────────┘
-```
+![Aegis-MD Architecture](./assets/architecture.png)
 
 ---
 
