@@ -19,3 +19,6 @@ frontend/.env.*.local
 
 # Source Guidelines
 data/guidelines/*.pdf
+
+# Chromadb
+data/chroma/chroma_db/
