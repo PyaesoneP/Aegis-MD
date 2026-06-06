@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, type ChangeEvent } from 'react'
+import { motion } from 'framer-motion'
 import type { PatientContext, TriageRequest } from '../types/triage'
+import { useMagnetic } from '../hooks/useMagnetic'
 
 const MAX_SYMPTOMS = 2000
 const MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -20,6 +22,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const magnetic = useMagnetic()
 
   useEffect(() => {
     return () => {
@@ -106,10 +109,12 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
     charRatio > 0.9 ? 'text-critical' : charRatio > 0.75 ? 'text-warning' : 'text-muted'
 
   return (
-    <section className="rounded-2xl border border-border bg-gradient-to-b from-surface to-canvas p-6 shadow-card">
-      <div className="mb-7">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">Triage Intake</h2>
-        <p className="mt-1 text-sm text-muted">
+    <section className="glass rounded-3xl p-6 shadow-card border-t-2 border-t-accent">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold tracking-tight text-ink font-display">
+          Triage Intake
+        </h2>
+        <p className="mt-1.5 text-sm text-muted font-sans">
           Enter patient symptoms and optional context for AI-assisted triage.
         </p>
       </div>
@@ -117,7 +122,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
       <form className="grid gap-6" onSubmit={handleSubmit} noValidate>
         {/* Symptoms */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="triage-symptoms" className="text-sm font-medium text-ink">
+          <label htmlFor="triage-symptoms" className="text-sm font-medium text-ink font-sans">
             Symptoms
           </label>
           <textarea
@@ -127,7 +132,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
             aria-invalid={validationError?.startsWith('Symptoms') || undefined}
             value={symptoms}
             onChange={(e) => setSymptoms(e.target.value)}
-            className="min-h-[140px] rounded-xl border border-border bg-surface px-4 py-3 text-sm text-ink placeholder:text-muted transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
+            className="min-h-[140px] rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-ink placeholder:text-muted transition-all duration-200 focus:border-accent/40 focus:outline-none focus:shadow-glow"
             maxLength={MAX_SYMPTOMS}
             placeholder="Describe symptoms, e.g. chest pain, shortness of breath..."
           />
@@ -139,7 +144,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
         {/* Age + Sex */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor="triage-age" className="text-sm font-medium text-ink">
+            <label htmlFor="triage-age" className="text-sm font-medium text-ink font-sans">
               Age <span className="font-normal text-muted">· optional</span>
             </label>
             <input
@@ -149,19 +154,19 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
               max={130}
               value={age}
               onChange={(e) => setAge(e.target.value === '' ? '' : Number(e.target.value))}
-              className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-muted transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
+              className="mt-1.5 w-full rounded-2xl border border-border bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-muted transition-all duration-200 focus:border-accent/40 focus:outline-none focus:shadow-glow"
               placeholder="e.g. 45"
             />
           </div>
           <div>
-            <label htmlFor="triage-sex" className="text-sm font-medium text-ink">
+            <label htmlFor="triage-sex" className="text-sm font-medium text-ink font-sans">
               Sex <span className="font-normal text-muted">· optional</span>
             </label>
             <select
               id="triage-sex"
               value={sex}
               onChange={handleSexChange}
-              className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-ink transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
+              className="mt-1.5 w-full rounded-2xl border border-border bg-surface px-4 py-2.5 text-sm text-ink transition-all duration-200 focus:border-accent/40 focus:outline-none focus:shadow-glow"
             >
               <option value="">Not provided</option>
               <option value="male">Male</option>
@@ -172,7 +177,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
 
         {/* Image upload */}
         <div>
-          <label htmlFor="triage-image" className="text-sm font-medium text-ink">
+          <label htmlFor="triage-image" className="text-sm font-medium text-ink font-sans">
             Image <span className="font-normal text-muted">· optional, JPEG/PNG, max 5 MB</span>
           </label>
           <input
@@ -182,14 +187,19 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
             accept="image/png,image/jpeg"
             onChange={handleFileChange}
             aria-label="Upload image (JPEG or PNG, max 5 MB)"
-            className="mt-2 text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink file:shadow-sm file:transition-colors hover:file:bg-canvas"
+            className="mt-2 text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-xl file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink file:shadow-sm file:transition-all hover:file:bg-canvas hover:file:shadow-md"
           />
           {imagePreview && (
-            <div className="relative mt-3 inline-block">
+            <motion.div
+              className="relative mt-3 inline-block"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+            >
               <img
                 src={imagePreview}
                 alt="Uploaded image preview"
-                className="max-h-40 rounded-xl"
+                className="max-h-40 rounded-2xl shadow-card"
               />
               <button
                 type="button"
@@ -204,24 +214,29 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
               >
                 ✕
               </button>
-            </div>
+            </motion.div>
           )}
         </div>
 
         {/* Buttons */}
-        <div className="flex items-center gap-3 pt-1">
+        <div className="flex items-center gap-3 pt-2">
           <button
             type="button"
             onClick={handleClear}
-            className="min-h-[44px] rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-ink transition-all hover:bg-canvas hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-30"
+            className="min-h-[44px] rounded-2xl border border-border px-5 py-2.5 text-sm font-medium text-ink transition-all hover:bg-canvas hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-30"
             disabled={loading}
           >
             Clear
           </button>
-          <button
+          <motion.button
+            ref={magnetic.ref}
             type="submit"
             disabled={loading}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-accent-hover hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-40"
+            style={{ x: magnetic.x, y: magnetic.y }}
+            onMouseMove={magnetic.onMouseMove}
+            onMouseLeave={magnetic.onMouseLeave}
+            whileTap={{ scale: 0.97 }}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-gradient-to-r from-accent to-accent-hover px-6 py-2.5 text-sm font-semibold text-white shadow-card transition-shadow hover:shadow-card-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-40"
           >
             {loading && (
               <svg
@@ -246,8 +261,8 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
                 />
               </svg>
             )}
-            {loading ? 'Submitting...' : 'Submit Triage'}
-          </button>
+            {loading ? 'Processing...' : 'Submit Triage'}
+          </motion.button>
         </div>
 
         {/* Error display */}
