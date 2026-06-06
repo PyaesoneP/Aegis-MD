@@ -6,7 +6,7 @@ type HealthStatus = 'ok' | 'error' | 'checking'
 const dotColors: Record<HealthStatus, string> = {
   ok: 'bg-safe',
   error: 'bg-critical',
-  checking: 'bg-muted animate-pulse',
+  checking: 'bg-muted animate-breath',
 }
 
 const dotLabels: Record<HealthStatus, string> = {
@@ -22,34 +22,40 @@ export function TriageHeader() {
     let cancelled = false
     async function check() {
       try {
-        const res = await fetch(`${API_BASE_URL}/health`, { signal: AbortSignal.timeout(5000) })
+        const res = await fetch(`${API_BASE_URL}/health`, {
+          signal: AbortSignal.timeout(5000),
+        })
         if (!cancelled) setHealth(res.ok ? 'ok' : 'error')
       } catch {
         if (!cancelled) setHealth('error')
       }
     }
     check()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
-    <header className="border-b border-border bg-surface/80 backdrop-blur-sm">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
+    <header className="glass sticky top-0 z-40 border-b border-white/20 transition-shadow">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted font-display">
             Aegis-MD
           </p>
-          <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
+          <h1 className="mt-1 text-xl font-bold tracking-tight text-ink font-sans">
             Multimodal Triage Console
           </h1>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs shadow-sm">
+        <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface px-3 py-1.5 text-xs shadow-sm">
           <span
             className={`inline-block size-2 shrink-0 rounded-full ${dotColors[health]}`}
             aria-label={dotLabels[health]}
             title={dotLabels[health]}
           />
-          <span className="font-medium text-ink tabular-nums">{API_BASE_URL}</span>
+          <span className="font-medium text-ink tabular-nums font-mono">
+            {API_BASE_URL}
+          </span>
         </div>
       </div>
     </header>
