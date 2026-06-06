@@ -81,7 +81,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | Layer | Technology |
 |---|---|
 | **Backend** | Python 3.12, FastAPI, Uvicorn |
-| **LLM** | Gemma-2B-IT (INT4 quantized via `llama-cpp-python`) |
+| **LLM** | MedGemma / MedGemma-1.5 (4B) via Ollama (configurable via `Aegis_LLM_MODEL`) |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (in-memory, baked into container) |
 | **Vision** | PyTorch, EfficientNet-B0 (fine-tuned on HAM10000) |
@@ -114,18 +114,23 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Download model weights & guidelines
-The current backend is a functional scaffold with deterministic placeholder triage rules. Model weights and guideline ingestion are reserved for the later full ML phase.
+### 3. Models & retrieval
+This backend now uses a local Ollama-hosted model for RAG-enabled triage. The model reference is configurable via the environment variable `Aegis_LLM_MODEL` (default set in `app/config.py`). Retrieval is performed using ChromaDB; configure the storage path and collection via `Aegis_CHROMA_PATH` and `Aegis_CHROMA_COLLECTION`.
+
+If you plan to run RAG locally with Ollama:
 
 ```bash
-# Download quantized Gemma-2B-IT (GGUF format)
-# Place in ./models/ directory
-mkdir -p models
-curl -L -o models/gemma-2b-it-q4_k_m.gguf   "https://huggingface.co/TheBloke/gemma-2b-it-GGUF/resolve/main/gemma-2b-it.Q4_K_M.gguf"
+# Install and run Ollama (see https://ollama.com/docs)
+# Example: pull a model into your Ollama instance (model ref must match Aegis_LLM_MODEL)
+ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16
 
-# Guideline PDFs are included in ./data/guidelines/
-# They are automatically chunked and embedded on first startup
+# Start Ollama daemon (platform-specific)
+ollama serve
 ```
+
+If you prefer to run a local GGUF model directly with another runtime, place model files under `./models/` and update `Aegis_LLM_MODEL` accordingly.
+
+Guideline PDFs remain under `./data/guidelines/` and are chunked/embedded when you first run the app (or via your ingestion script).
 
 ### 4. Run the FastAPI server locally
 ```bash
@@ -142,6 +147,10 @@ Backend environment variables:
 | `Aegis_LOG_DIR` | `logs` | Directory for security JSONL events |
 | `Aegis_RATE_LIMIT_REQUESTS` | `10` | Requests allowed per client window |
 | `Aegis_RATE_LIMIT_WINDOW_SECONDS` | `60` | Sliding window length |
+| `Aegis_LLM_MODEL` | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16` | Ollama model reference used for RAG triage |
+| `Aegis_CHROMA_PATH` | `data/chroma/chroma_db` | Filesystem path for ChromaDB persistence |
+| `Aegis_CHROMA_COLLECTION` | `guidelines` | Chroma collection name for guideline chunks |
+| `Aegis_RETRIEVAL_TOP_K` | `3` | Number of guideline chunks to retrieve per query |
 
 ### 5. Test the API
 ```bash
