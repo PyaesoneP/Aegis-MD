@@ -3,7 +3,6 @@ import { submitTriage, ApiError } from '../lib/api'
 import type { TriageRequest, TriageResponse } from '../types/triage'
 import { TriageHeader } from './TriageHeader'
 import { TriageForm } from './TriageForm'
-import { GatewayPath } from './GatewayPath'
 import { ResponsePreview } from './ResponsePreview'
 
 export function Shell() {
@@ -20,7 +19,6 @@ export function Shell() {
     try {
       const res = await submitTriage(req)
       setResponse(res)
-      // Move focus to the response section after a tick so the DOM has updated
       setTimeout(() => {
         responseRef.current?.querySelector('h2')?.focus()
       }, 0)
@@ -45,18 +43,16 @@ export function Shell() {
   }
 
   return (
-    <main className="min-h-screen bg-clinical-paper">
+    <main className="min-h-screen bg-canvas">
       <TriageHeader />
 
-      <div className="mx-auto grid w-full max-w-6xl gap-5 px-5 py-6 lg:grid-cols-[1.15fr_0.85fr]">
+      <div className="mx-auto max-w-5xl space-y-6 px-6 py-8">
         <TriageForm
           onSubmit={handleSubmit}
           onClear={handleClear}
           loading={loading}
           apiError={apiError}
         />
-
-        <GatewayPath />
 
         <div ref={responseRef}>
           <ResponsePreview response={response} loading={loading} />
