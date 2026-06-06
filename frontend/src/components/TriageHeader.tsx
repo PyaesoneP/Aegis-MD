@@ -4,9 +4,9 @@ import { API_BASE_URL } from '../lib/api'
 type HealthStatus = 'ok' | 'error' | 'checking'
 
 const dotColors: Record<HealthStatus, string> = {
-  ok: 'bg-emerald-500',
-  error: 'bg-rose-500',
-  checking: 'bg-zinc-400 animate-pulse',
+  ok: 'bg-safe',
+  error: 'bg-critical',
+  checking: 'bg-muted animate-pulse',
 }
 
 const dotLabels: Record<HealthStatus, string> = {
@@ -33,24 +33,23 @@ export function TriageHeader() {
   }, [])
 
   return (
-    <header className="border-b border-clinical-line bg-white">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+    <header className="border-b border-border bg-surface/80 backdrop-blur-sm">
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-clinical-teal">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted">
             Aegis-MD
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-clinical-ink sm:text-3xl">
+          <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-ink">
             Multimodal Triage Console
           </h1>
         </div>
-        <div className="flex items-center gap-3 rounded-lg border border-clinical-line bg-clinical-mint px-4 py-3 text-sm text-clinical-ink">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs shadow-sm">
           <span
-            className={`inline-block size-2.5 shrink-0 rounded-full ${dotColors[health]}`}
+            className={`inline-block size-2 shrink-0 rounded-full ${dotColors[health]}`}
             aria-label={dotLabels[health]}
             title={dotLabels[health]}
           />
-          <span className="font-semibold">API</span>
-          <span className="break-all">{API_BASE_URL}</span>
+          <span className="font-medium text-ink tabular-nums">{API_BASE_URL}</span>
         </div>
       </div>
     </header>

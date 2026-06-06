@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  color: #17201f;
-  background: #f7faf9;
+  color: #131316;
+  background: #f7f7f8;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -28,19 +28,22 @@ select {
   font: inherit;
 }
 
-/* Visible focus rings for keyboard navigation */
+/* Visible focus rings */
 :focus-visible {
-  outline: 2px solid #0f766e;
+  outline: 2px solid #635bff;
   outline-offset: 2px;
 }
 
-/* Remove default focus outline for mouse users (Tailwind preflight handles this,
-   but we override it with :focus-visible so keyboard users still get rings) */
 :focus:not(:focus-visible) {
   outline: none;
 }
 
-/* Respect reduced-motion preferences */
+/* Text balance */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Respect reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,10 +1,27 @@
+import { motion } from 'framer-motion'
 import type { Urgency } from '../types/triage'
 
-const urgencyStyles: Record<Urgency, string> = {
-  Emergency: 'bg-rose-50 text-clinical-rose ring-rose-200',
-  Urgent: 'bg-amber-50 text-clinical-amber ring-amber-200',
-  Routine: 'bg-emerald-50 text-clinical-teal ring-emerald-200',
-  'Self-Care': 'bg-zinc-100 text-zinc-700 ring-zinc-300',
+const urgencyStyles: Record<Urgency, { bg: string; text: string; ring: string }> = {
+  Emergency: {
+    bg: 'bg-critical-subtle',
+    text: 'text-critical',
+    ring: 'ring-critical/25',
+  },
+  Urgent: {
+    bg: 'bg-warning-subtle',
+    text: 'text-warning',
+    ring: 'ring-warning/25',
+  },
+  Routine: {
+    bg: 'bg-safe-subtle',
+    text: 'text-safe',
+    ring: 'ring-safe/25',
+  },
+  'Self-Care': {
+    bg: 'bg-neutral-subtle',
+    text: 'text-neutral',
+    ring: 'ring-neutral/25',
+  },
 }
 
 interface UrgencyBadgeProps {
@@ -12,11 +29,14 @@ interface UrgencyBadgeProps {
 }
 
 export function UrgencyBadge({ urgency }: UrgencyBadgeProps) {
+  const s = urgencyStyles[urgency]
   return (
-    <span
-      className={`rounded-md px-3 py-1 text-xs font-semibold ring-1 ring-inset ${urgencyStyles[urgency]}`}
+    <motion.span
+      layout
+      className={`inline-block rounded-lg px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${s.bg} ${s.text} ${s.ring}`}
+      whileHover={{ scale: 1.04 }}
     >
       {urgency}
-    </span>
+    </motion.span>
   )
 }
