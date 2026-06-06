@@ -3,15 +3,23 @@
 @tailwind utilities;
 
 :root {
-  color: #131316;
-  background: #f7f7f8;
+  --ink: #0c0a09;
+  --canvas: #fafaf9;
+  --surface: #ffffff;
+  --accent: #635bff;
+  --accent-gradient: linear-gradient(135deg, #635bff, #8b5cf6);
+
+  color: var(--ink);
+  background: var(--canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -28,9 +36,28 @@ select {
   font: inherit;
 }
 
-/* Visible focus rings */
+/* ── Glassmorphism ── */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* ── Noise texture layer ── */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background-image: url('/noise.svg');
+  opacity: 0.02;
+  mix-blend-mode: overlay;
+}
+
+/* ── Focus rings ── */
 :focus-visible {
-  outline: 2px solid #635bff;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -38,12 +65,36 @@ select {
   outline: none;
 }
 
-/* Text balance */
+/* ── Selection ── */
+::selection {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+
+/* ── Text balance ── */
 .text-balance {
   text-wrap: balance;
 }
 
-/* Respect reduced-motion */
+/* ── Respect reduced-motion ── */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
