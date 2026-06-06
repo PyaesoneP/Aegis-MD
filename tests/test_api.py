@@ -4,12 +4,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
+from app.llm import RagResponse
 from app.main import create_app
+from app.retriever import RetrievalError
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     settings = Settings(log_dir=str(tmp_path / "logs"))
+    monkeypatch.setattr(
+        "app.triage.rag_response",
+        lambda symptoms, patient_context=None, rule_urgency=None: RagResponse(
+            urgency=rule_urgency or "Routine",
+            rationale="Stubbed RAG response for tests.",
+            confidence="high",
+            sources=["stubbed"],
+        ),
+    )
     app = create_app(settings)
     with TestClient(app) as test_client:
         yield test_client
@@ -21,9 +32,14 @@ def test_health_returns_component_status(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert {"api", "security", "text_model", "vision_model", "observability"} <= set(
-        payload["components"]
-    )
+    assert {
+        "api",
+        "security",
+        "text_model",
+        "retrieval",
+        "vision_model",
+        "observability",
+    } <= set(payload["components"])
 
 
 def test_metrics_returns_prometheus_text(client):
@@ -39,6 +55,36 @@ def test_dashboard_returns_html(client):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Aegis-MD Monitoring" in response.text
+
+
+def test_health_reports_degraded_retrieval_when_chroma_unavailable(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.main.get_guideline_collection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RetrievalError("path not found")
+        ),
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["components"]["retrieval"]["status"] == "degraded"
+    assert "Chroma retrieval unavailable" in payload["components"]["retrieval"]["detail"]
+
+
+def test_health_reports_degraded_text_model_when_ollama_package_missing(client, monkeypatch):
+    monkeypatch.setattr(
+        "app.main._check_ollama_health",
+        lambda: ("degraded", "Ollama package is not installed or unavailable."),
+    )
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["components"]["text_model"]["status"] == "degraded"
+    assert "Ollama package is not installed or unavailable." in payload["components"]["text_model"]["detail"]
 
 
 def test_valid_text_only_triage_matches_contract(client):
@@ -135,8 +181,18 @@ def test_prompt_injection_is_blocked_and_logged(client, tmp_path):
     assert "ignore previous instructions" not in log_text
 
 
-def test_rate_limit_blocks_eleventh_request(tmp_path):
-    app = create_app(Settings(log_dir=str(tmp_path / "logs")))
+def test_rate_limit_blocks_eleventh_request(tmp_path, monkeypatch):
+    settings = Settings(log_dir=str(tmp_path / "logs"))
+    monkeypatch.setattr(
+        "app.triage.rag_response",
+        lambda symptoms, patient_context=None, rule_urgency=None: RagResponse(
+            urgency=rule_urgency or "Routine",
+            rationale="Stubbed RAG response for rate limit tests.",
+            confidence="high",
+            sources=["stubbed"],
+        ),
+    )
+    app = create_app(settings)
     with TestClient(app) as test_client:
         responses = [
             test_client.post(

@@ -15,6 +15,11 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="Aegis_", case_sensitive=False)
 
+    llm_model: str = "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16"
+    chroma_path: str = "data/chroma/chroma_db"
+    chroma_collection: str = "guidelines"
+    retrieval_top_k: int = 3
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [
@@ -27,4 +32,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

@@ -7,9 +7,12 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.config import Settings, get_settings
+from app.llm import LLMError
 from app.models import BlockedResponse, HealthResponse, PatientContext, TriageResponse
+from app.retriever import get_guideline_collection, RetrievalError
 from app.observability import (
     REQUEST_COUNT,
     SECURITY_BLOCKED,
@@ -18,6 +21,7 @@ from app.observability import (
     log_security_event,
     metrics_payload,
 )
+from app.retriever import RetrievalError
 from app.security import RateLimiter, detect_prompt_injection, get_client_ip
 from app.triage import build_vision_placeholder, classify_text
 
@@ -57,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        text_model_status, text_model_detail = _check_ollama_health()
+        retrieval_status, retrieval_detail = _check_retrieval_health(settings)
         return HealthResponse(
             status="ok",
             components={
@@ -66,8 +72,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "detail": "Regex prompt-injection filter and rate limiter enabled.",
                 },
                 "text_model": {
-                    "status": "placeholder",
-                    "detail": "Deterministic scaffold rules are active.",
+                    "status": text_model_status,
+                    "detail": text_model_detail,
+                },
+                "retrieval": {
+                    "status": retrieval_status,
+                    "detail": retrieval_detail,
                 },
                 "vision_model": {
                     "status": "placeholder",
@@ -118,7 +128,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post(
         "/api/v1/triage",
         response_model=TriageResponse,
-        responses={400: {"model": BlockedResponse}, 429: {"model": BlockedResponse}},
+        responses={
+            400: {"model": BlockedResponse},
+            429: {"model": BlockedResponse},
+            503: {"description": "RAG or Ollama dependency unavailable"},
+        },
     )
     async def triage(
         request: Request,
@@ -171,9 +185,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         parsed_context = _parse_patient_context(patient_context)
         has_image = await _validate_image(image, settings)
 
-        with TRIAGE_LATENCY.time():
-            triage_result = classify_text(symptoms, parsed_context)
-            vision_result = build_vision_placeholder(has_image)
+        try:
+            with TRIAGE_LATENCY.time():
+                triage_result = await run_in_threadpool(
+                    classify_text,
+                    symptoms,
+                    parsed_context,
+                )
+                vision_result = build_vision_placeholder(has_image)
+        except (LLMError, RetrievalError) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Text triage RAG/LLM dependency is unavailable.",
+            ) from exc
 
         URGENCY_DISTRIBUTION.labels(triage_result.urgency).inc()
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -186,6 +210,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _check_ollama_health() -> tuple[str, str]:
+    try:
+        from ollama import chat  # noqa: F401
+    except ImportError:
+        return (
+            "degraded",
+            "Ollama package is not installed or unavailable.",
+        )
+
+    return (
+        "ok",
+        "Ollama package is installed and available.",
+    )
+
+
+def _check_retrieval_health(settings: Settings) -> tuple[str, str]:
+    try:
+        get_guideline_collection(
+            chroma_path=settings.chroma_path,
+            collection_name=settings.chroma_collection,
+        )
+    except RetrievalError as exc:
+        return (
+            "degraded",
+            f"Chroma retrieval unavailable: {exc}",
+        )
+
+    return (
+        "ok",
+        f"Chroma retrieval configured for collection {settings.chroma_collection}.",
+    )
 
 
 def _blocked(*, status_code: int, error: str, request_id: str) -> JSONResponse:

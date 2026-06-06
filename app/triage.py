@@ -1,3 +1,4 @@
+from app.llm import rag_response
 from app.models import PatientContext, TriageResult, Urgency, VisionResult
 
 
@@ -34,35 +35,30 @@ SELF_CARE_TERMS = (
     "sore throat",
 )
 
+URGENCY_RANK: dict[Urgency, int] = {
+    "Self-Care": 0,
+    "Routine": 1,
+    "Urgent": 2,
+    "Emergency": 3,
+}
+
 
 def classify_text(symptoms: str, patient_context: PatientContext | None) -> TriageResult:
     text = symptoms.lower()
-    urgency = _select_urgency(text)
+    rule_urgency = _select_urgency(text)
+    rag_result = rag_response(
+        symptoms,
+        patient_context=patient_context,
+        rule_urgency=rule_urgency,
+    )
+    urgency = _highest_urgency(rule_urgency, rag_result.urgency)
+    rationale = rag_result.rationale
 
-    if urgency == "Emergency":
-        rationale = (
-            "The symptom description includes red-flag language that should be treated "
-            "as potentially time-sensitive in this scaffold."
+    if urgency != rag_result.urgency:
+        rationale += (
+            f" Local triage safeguards raised the final urgency from "
+            f"{rag_result.urgency} to {urgency}."
         )
-        confidence = "high"
-    elif urgency == "Urgent":
-        rationale = (
-            "The symptom description includes features that may need prompt clinical "
-            "review, but this scaffold does not diagnose or prescribe."
-        )
-        confidence = "medium"
-    elif urgency == "Self-Care":
-        rationale = (
-            "The symptom description appears mild in this deterministic scaffold. "
-            "Escalate if symptoms worsen or new red flags appear."
-        )
-        confidence = "low"
-    else:
-        rationale = (
-            "No emergency red flags were detected by the scaffold rules. A routine "
-            "clinical review may still be appropriate depending on context."
-        )
-        confidence = "medium"
 
     if patient_context and patient_context.age is not None and patient_context.age >= 65:
         rationale += " Age over 65 was noted as a factor for lower threshold review."
@@ -70,8 +66,8 @@ def classify_text(symptoms: str, patient_context: PatientContext | None) -> Tria
     return TriageResult(
         urgency=urgency,
         rationale=rationale,
-        confidence=confidence,
-        sources=["Aegis-MD scaffold triage rules"],
+        confidence=rag_result.confidence,
+        sources=rag_result.sources,
         disclaimer=DISCLAIMER,
     )
 
@@ -95,3 +91,6 @@ def _select_urgency(text: str) -> Urgency:
         return "Self-Care"
     return "Routine"
 
+
+def _highest_urgency(first: Urgency, second: Urgency) -> Urgency:
+    return first if URGENCY_RANK[first] >= URGENCY_RANK[second] else second
