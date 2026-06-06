@@ -14,6 +14,8 @@ export class ApiError extends Error {
   }
 }
 
+const TRIAGE_TIMEOUT_MS = 30_000
+
 export async function submitTriage(
   request: TriageRequest,
 ): Promise<TriageResponse> {
@@ -28,10 +30,28 @@ export async function submitTriage(
     formData.append('image', request.image)
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/triage`, {
-    method: 'POST',
-    body: formData,
-  })
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/api/v1/triage`, {
+      method: 'POST',
+      body: formData,
+      signal: AbortSignal.timeout(TRIAGE_TIMEOUT_MS),
+    })
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'TimeoutError') {
+      throw new ApiError(
+        'Request timed out. The server may be unavailable. Please try again.',
+        0,
+        null,
+      )
+    }
+    throw new ApiError(
+      'Cannot reach server. Check your connection and try again.',
+      0,
+      null,
+    )
+  }
+
   const payload: unknown = await response.json()
 
   if (!response.ok) {
