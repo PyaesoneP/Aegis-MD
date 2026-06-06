@@ -21,7 +21,6 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
   const [validationError, setValidationError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
 
-  // Cleanup object URL on unmount or when imagePreview changes
   useEffect(() => {
     return () => {
       if (imagePreview) URL.revokeObjectURL(imagePreview)
@@ -32,7 +31,6 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
     setValidationError(null)
     const f = e.target.files?.[0] ?? null
 
-    // Revoke previous preview URL
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview)
       setImagePreview(null)
@@ -84,7 +82,6 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
   }
 
   function handleClear() {
-    // Revoke URL before clearing
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview)
     }
@@ -104,25 +101,23 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
   }
 
   const displayError = validationError ?? apiError
+  const charRatio = symptoms.length / MAX_SYMPTOMS
+  const counterColor =
+    charRatio > 0.9 ? 'text-critical' : charRatio > 0.75 ? 'text-warning' : 'text-muted'
 
   return (
-    <section className="rounded-lg border border-clinical-line bg-white p-5 shadow-panel">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-clinical-ink">Triage Intake</h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            Static scaffold for the future multipart request flow.
-          </p>
-        </div>
-        <span className="rounded-md bg-clinical-mint px-3 py-1 text-xs font-semibold text-clinical-teal">
-          Ready
-        </span>
+    <section className="rounded-2xl border border-border bg-gradient-to-b from-surface to-canvas p-6 shadow-card">
+      <div className="mb-7">
+        <h2 className="text-lg font-semibold tracking-tight text-ink">Triage Intake</h2>
+        <p className="mt-1 text-sm text-muted">
+          Enter patient symptoms and optional context for AI-assisted triage.
+        </p>
       </div>
 
-      <form className="mt-5 grid gap-3" onSubmit={handleSubmit} noValidate>
+      <form className="grid gap-6" onSubmit={handleSubmit} noValidate>
         {/* Symptoms */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="triage-symptoms" className="text-sm font-medium text-clinical-ink">
+          <label htmlFor="triage-symptoms" className="text-sm font-medium text-ink">
             Symptoms
           </label>
           <textarea
@@ -132,20 +127,20 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
             aria-invalid={validationError?.startsWith('Symptoms') || undefined}
             value={symptoms}
             onChange={(e) => setSymptoms(e.target.value)}
-            className="min-h-[120px] rounded-md border border-clinical-line p-3 focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+            className="min-h-[140px] rounded-xl border border-border bg-surface px-4 py-3 text-sm text-ink placeholder:text-muted transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
             maxLength={MAX_SYMPTOMS}
             placeholder="Describe symptoms, e.g. chest pain, shortness of breath..."
           />
-          <div id="symptoms-counter" className="text-xs text-zinc-500">
+          <div id="symptoms-counter" className={`text-xs tabular-nums ${counterColor}`}>
             {symptoms.length}/{MAX_SYMPTOMS}
           </div>
         </div>
 
         {/* Age + Sex */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label htmlFor="triage-age" className="text-sm font-medium text-clinical-ink">
-              Age (optional)
+            <label htmlFor="triage-age" className="text-sm font-medium text-ink">
+              Age <span className="font-normal text-muted">· optional</span>
             </label>
             <input
               id="triage-age"
@@ -154,19 +149,19 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
               max={130}
               value={age}
               onChange={(e) => setAge(e.target.value === '' ? '' : Number(e.target.value))}
-              className="mt-1 w-full rounded-md border border-clinical-line p-2 focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+              className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-muted transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
               placeholder="e.g. 45"
             />
           </div>
           <div>
-            <label htmlFor="triage-sex" className="text-sm font-medium text-clinical-ink">
-              Sex (optional)
+            <label htmlFor="triage-sex" className="text-sm font-medium text-ink">
+              Sex <span className="font-normal text-muted">· optional</span>
             </label>
             <select
               id="triage-sex"
               value={sex}
               onChange={handleSexChange}
-              className="mt-1 w-full rounded-md border border-clinical-line p-2 focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+              className="mt-1.5 w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-ink transition-shadow focus:border-accent/40 focus:outline-none focus:shadow-input"
             >
               <option value="">Not provided</option>
               <option value="male">Male</option>
@@ -177,8 +172,8 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
 
         {/* Image upload */}
         <div>
-          <label htmlFor="triage-image" className="text-sm font-medium text-clinical-ink">
-            Optional image
+          <label htmlFor="triage-image" className="text-sm font-medium text-ink">
+            Image <span className="font-normal text-muted">· optional, JPEG/PNG, max 5 MB</span>
           </label>
           <input
             ref={fileRef}
@@ -187,14 +182,14 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
             accept="image/png,image/jpeg"
             onChange={handleFileChange}
             aria-label="Upload image (JPEG or PNG, max 5 MB)"
-            className="mt-2 focus:outline-none"
+            className="mt-2 text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border file:border-border file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink file:shadow-sm file:transition-colors hover:file:bg-canvas"
           />
           {imagePreview && (
-            <div className="relative mt-2 inline-block">
+            <div className="relative mt-3 inline-block">
               <img
                 src={imagePreview}
                 alt="Uploaded image preview"
-                className="max-h-40 rounded-md"
+                className="max-h-40 rounded-xl"
               />
               <button
                 type="button"
@@ -204,7 +199,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
                   setImagePreview(null)
                   if (fileRef.current) fileRef.current.value = ''
                 }}
-                className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-clinical-ink text-xs text-white hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+                className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-ink text-[10px] text-white shadow-sm transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
                 aria-label="Remove image"
               >
                 ✕
@@ -214,11 +209,11 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
         </div>
 
         {/* Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 pt-1">
           <button
             type="button"
             onClick={handleClear}
-            className="min-h-[44px] rounded-md border border-clinical-line px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+            className="min-h-[44px] rounded-xl border border-border px-5 py-2.5 text-sm font-medium text-ink transition-all hover:bg-canvas hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-30"
             disabled={loading}
           >
             Clear
@@ -226,7 +221,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-clinical-teal px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-clinical-teal focus:ring-offset-1"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-accent-hover hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1 disabled:opacity-40"
           >
             {loading && (
               <svg
@@ -261,7 +256,7 @@ export function TriageForm({ onSubmit, onClear, loading, apiError }: TriageFormP
             id="symptoms-error"
             role="alert"
             aria-live="assertive"
-            className="text-sm text-clinical-rose"
+            className="rounded-xl border border-critical/20 bg-critical-subtle px-4 py-3 text-sm font-medium text-critical"
           >
             {displayError}
           </div>
