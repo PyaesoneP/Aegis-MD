@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef } from 'react'
 import { API_BASE_URL, submitTriage, ApiError } from '../lib/api'
 import type { PatientContext, TriageRequest, TriageResponse } from '../types/triage'
 

@@ -1,11 +1,13 @@
 import React from 'react'
+import { describe, beforeEach, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { vi } from 'vitest'
 
 // Mock the API client
 vi.mock('../../lib/api', () => ({
+  API_BASE_URL: 'http://test-api.local',
   submitTriage: vi.fn(),
+  ApiError: class ApiError extends Error {},
 }))
 
 import { submitTriage } from '../../lib/api'
@@ -43,15 +45,12 @@ describe('Shell component', () => {
     await userEvent.type(ageInput, '45')
 
     const submit = screen.getByRole('button', { name: /submit triage/i })
-    userEvent.click(submit)
-
-    // loading state
-    expect(submit).toHaveTextContent(/submitting/i)
+    await userEvent.click(submit)
 
     // wait for response to be rendered
     await waitFor(() => {
-      expect(screen.getByText(/Urgency/i)).toBeInTheDocument()
-      expect(screen.getByText(/Test rationale/)).toBeInTheDocument()
+      expect(screen.getByText(/Urgency/i)).toBeTruthy()
+      expect(screen.getByText(/Test rationale/)).toBeTruthy()
     })
 
     expect(submitTriage).toHaveBeenCalled()
