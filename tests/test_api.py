@@ -181,8 +181,18 @@ def test_prompt_injection_is_blocked_and_logged(client, tmp_path):
     assert "ignore previous instructions" not in log_text
 
 
-def test_rate_limit_blocks_eleventh_request(tmp_path):
-    app = create_app(Settings(log_dir=str(tmp_path / "logs")))
+def test_rate_limit_blocks_eleventh_request(tmp_path, monkeypatch):
+    settings = Settings(log_dir=str(tmp_path / "logs"))
+    monkeypatch.setattr(
+        "app.triage.rag_response",
+        lambda symptoms, patient_context=None, rule_urgency=None: RagResponse(
+            urgency=rule_urgency or "Routine",
+            rationale="Stubbed RAG response for rate limit tests.",
+            confidence="high",
+            sources=["stubbed"],
+        ),
+    )
+    app = create_app(settings)
     with TestClient(app) as test_client:
         responses = [
             test_client.post(
