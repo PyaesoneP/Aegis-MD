@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import type { TriageResponse } from '../types/triage'
 import { UrgencyBadge } from './UrgencyBadge'
+import { SkeletonCard } from './SkeletonCard'
 
 interface ResponsePreviewProps {
   response: TriageResponse | null
@@ -8,24 +9,12 @@ interface ResponsePreviewProps {
 }
 
 const cardVariants = {
-  hidden: { opacity: 0, y: 8 },
+  hidden: { opacity: 0, y: 12 },
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.06, duration: 0.25, ease: 'easeOut' as const },
+    transition: { delay: i * 0.08, duration: 0.3, ease: 'easeOut' as const },
   }),
-}
-
-function SkeletonCard({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</p>
-      <div className="mt-3 space-y-2" aria-hidden="true">
-        <span className="block h-2 animate-pulse rounded-full bg-border motion-safe:animate-pulse" />
-        <span className="block h-2 w-2/3 animate-pulse rounded-full bg-border motion-safe:animate-pulse" />
-      </div>
-    </div>
-  )
 }
 
 export function ResponsePreview({ response, loading }: ResponsePreviewProps) {
@@ -33,16 +22,20 @@ export function ResponsePreview({ response, loading }: ResponsePreviewProps) {
 
   return (
     <section
-      className="rounded-2xl border border-border bg-gradient-to-b from-surface to-canvas p-6 shadow-card"
+      className="glass rounded-3xl p-8 shadow-card border-t-2 border-t-accent"
       aria-live="polite"
       aria-busy={loading || undefined}
     >
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold tracking-tight text-ink">Response</h2>
-        <p className="mt-1 text-sm text-muted">AI-generated triage assessment.</p>
+      <div className="mb-10">
+        <h2 className="text-3xl font-bold tracking-tight text-ink font-display">
+          Triage Assessment
+        </h2>
+        <p className="mt-2 text-sm text-muted font-sans">
+          AI-generated analysis based on submitted symptoms and context.
+        </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence mode="wait">
           {showSkeletons ? (
             <motion.div
@@ -51,57 +44,81 @@ export function ResponsePreview({ response, loading }: ResponsePreviewProps) {
               exit={{ opacity: 0, transition: { duration: 0.12 } }}
             >
               <SkeletonCard label="Urgency" />
-              <SkeletonCard label="Rationale" />
+              <SkeletonCard label="Rationale" className="lg:col-span-2" />
               <SkeletonCard label="Sources" />
-              <SkeletonCard label="Disclaimer" />
+              <SkeletonCard label="Disclaimer" className="lg:col-span-2" />
             </motion.div>
           ) : (
             <motion.div key="content" className="contents">
+              {/* Urgency */}
               <motion.div
-                className="rounded-xl border border-border bg-gradient-to-b from-surface to-canvas p-4 shadow-sm"
+                className="glass rounded-2xl p-5 shadow-sm border-l-[3px] border-l-critical"
                 custom={0}
                 variants={cardVariants}
                 initial="hidden"
                 animate="visible"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Urgency</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted font-display">
+                  Urgency
+                </p>
                 <div className="mt-3">
                   <UrgencyBadge urgency={response!.triage_result.urgency} />
                 </div>
               </motion.div>
+
+              {/* Rationale */}
               <motion.div
-                className="rounded-xl border border-border bg-gradient-to-b from-surface to-canvas p-4 shadow-sm"
+                className="glass rounded-2xl p-5 shadow-sm lg:col-span-2"
                 custom={1}
                 variants={cardVariants}
                 initial="hidden"
                 animate="visible"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Rationale</p>
-                <p className="mt-3 text-sm leading-relaxed text-ink">{response!.triage_result.rationale}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted font-display">
+                  Rationale
+                </p>
+                <p className="mt-3 text-base leading-relaxed text-ink font-sans">
+                  {response!.triage_result.rationale}
+                </p>
               </motion.div>
+
+              {/* Sources */}
               <motion.div
-                className="rounded-xl border border-border bg-gradient-to-b from-surface to-canvas p-4 shadow-sm"
+                className="glass rounded-2xl p-5 shadow-sm"
                 custom={2}
                 variants={cardVariants}
                 initial="hidden"
                 animate="visible"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Sources</p>
-                <ul className="mt-3 list-disc pl-4 text-sm text-ink space-y-1 break-words">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted font-display">
+                  Sources
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   {response!.triage_result.sources.map((s, i) => (
-                    <li key={i} className="break-all">{s}</li>
+                    <span
+                      key={i}
+                      className="inline-block rounded-full bg-accent-subtle px-2.5 py-0.5 text-xs font-medium text-accent font-mono break-all"
+                    >
+                      {s}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </motion.div>
+
+              {/* Disclaimer */}
               <motion.div
-                className="rounded-xl border border-border bg-gradient-to-b from-surface to-canvas p-4 shadow-sm"
+                className="glass rounded-2xl p-5 shadow-sm lg:col-span-2"
                 custom={3}
                 variants={cardVariants}
                 initial="hidden"
                 animate="visible"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Disclaimer</p>
-                <p className="mt-3 text-xs leading-relaxed text-muted">{response!.triage_result.disclaimer}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted font-display">
+                  Disclaimer
+                </p>
+                <p className="mt-3 text-xs leading-relaxed text-muted/80 italic font-sans">
+                  {response!.triage_result.disclaimer}
+                </p>
               </motion.div>
             </motion.div>
           )}
