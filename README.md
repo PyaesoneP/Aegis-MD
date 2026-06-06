@@ -25,7 +25,7 @@ Upload a symptom description (and optionally a skin-lesion image) to receive an 
 Aegis-MD is a **minimum viable prototype (MVP)** of a multimodal clinical triage agent. It combines:
 
 - **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK)
-- **Small Language Model (SLM)** inference via quantized Gemma-2B-IT for low-latency, CPU-only text triage
+- **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL` and can be replaced with another Ollama-compatible model or an on-disk GGUF runtime.
 - **Computer Vision** risk stratification using a fine-tuned EfficientNet-B0 for skin-lesion screening
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
