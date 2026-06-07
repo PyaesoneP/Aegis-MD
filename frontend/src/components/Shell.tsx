@@ -38,6 +38,9 @@ export function Shell() {
     setResponse(null)
     setLoading(true)
 
+    // Scroll to the loading sequence so user sees the engaging animation
+    responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
     try {
       const res = await submitTriage(req)
       setResponse(res)
