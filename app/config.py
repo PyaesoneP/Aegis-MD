@@ -6,15 +6,46 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Runtime settings for the FastAPI scaffold."""
 
+    # ── Networking ──────────────────────────────────────────────────────
     allowed_origins: str = "http://localhost:5173,https://pyaesonep.github.io"
+    cors_allow_headers: str = "content-type,accept"
+
+    # ── Logging & observability ─────────────────────────────────────────
     log_dir: str = "logs"
+    log_max_bytes: int = 10 * 1024 * 1024  # 10 MB per log file
+    log_backup_count: int = 3
+
+    # ── Rate limiting ───────────────────────────────────────────────────
     rate_limit_requests: int = 10
     rate_limit_window_seconds: int = 60
+    rate_limit_burst_multiplier: float = 2.0
+    rate_limit_burst_seconds: float = 5.0
+    # Higher limits for lightweight endpoints.
+    rate_limit_health_requests: int = 60
+    rate_limit_metrics_requests: int = 60
+    rate_limit_dashboard_requests: int = 30
+
+    # ── Input validation ────────────────────────────────────────────────
     max_symptom_chars: int = 2_000
     max_image_bytes: int = 5 * 1024 * 1024
+    max_body_bytes: int = 10 * 1024 * 1024  # total request body limit
+    max_json_depth: int = 5
+    max_json_bytes: int = 10_240  # 10 KB for patient_context JSON
+    max_image_megapixels: int = 100  # decompression-bomb guard
+    max_aspect_ratio: int = 100
 
+    # ── Security headers ────────────────────────────────────────────────
+    enable_hsts: bool = False  # off by default for local dev
+
+    # ── Circuit breaker ─────────────────────────────────────────────────
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_recovery_seconds: float = 30.0
+
+    # ── Alerting ────────────────────────────────────────────────────────
+    alert_threshold_per_minute: int = 20
+
+    # ── LLM / RAG / Vision ──────────────────────────────────────────────
     model_config = SettingsConfigDict(env_prefix="Aegis_", case_sensitive=False)
-
     llm_model: str = "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16"
     chroma_path: str = "data/chroma/chroma_db"
     chroma_collection: str = "guidelines"
@@ -31,12 +62,24 @@ class Settings(BaseSettings):
         "If the image is not a recognizable medical image, set risk to 'insufficient confidence' and explain why."
     )
 
+    # ── Output safety ───────────────────────────────────────────────────
+    max_rationale_chars: int = 4_000
+    max_disclaimer_chars: int = 500
+
     @property
     def allowed_origin_list(self) -> list[str]:
         return [
             origin.strip()
             for origin in self.allowed_origins.split(",")
             if origin.strip()
+        ]
+
+    @property
+    def cors_allow_header_list(self) -> list[str]:
+        return [
+            h.strip().lower()
+            for h in self.cors_allow_headers.split(",")
+            if h.strip()
         ]
 
 
