@@ -17,37 +17,101 @@ const cardVariants = {
   }),
 }
 
+/** Staggered skeleton cards that appear one-by-one during loading. */
+const loadingStages = [
+  { label: 'Analyzing symptoms…', colSpan: '' as string },
+  { label: 'Evaluating urgency…', colSpan: 'lg:col-span-2' as string },
+  { label: 'Cross-referencing sources…', colSpan: '' as string },
+  { label: 'Generating assessment…', colSpan: 'lg:col-span-2' as string },
+]
+
+const loadingCardVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.35, duration: 0.35, ease: 'easeOut' as const },
+  }),
+}
+
+function LoadingSequence() {
+  return (
+    <AnimatePresence>
+      <motion.div key="loading-sequence" className="contents">
+        {loadingStages.map((stage, i) => (
+          <motion.div
+            key={stage.label}
+            custom={i}
+            variants={loadingCardVariants}
+            initial="hidden"
+            animate="visible"
+            className={stage.colSpan || undefined}
+          >
+            <SkeletonCard label={stage.label} />
+          </motion.div>
+        ))}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
 export function ResponsePreview({ response, loading }: ResponsePreviewProps) {
   const showSkeletons = !response
 
   return (
     <section
-      className="glass rounded-3xl p-8 shadow-card border-t-2 border-t-accent"
+      className="glass relative overflow-hidden rounded-3xl p-8 shadow-card border-t-2 border-t-accent"
       aria-live="polite"
       aria-busy={loading || undefined}
     >
+      {/* Progress bar — only visible during loading */}
+      {loading && (
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-accent/15" aria-hidden="true">
+          <motion.div
+            className="h-full bg-gradient-to-r from-accent to-accent-hover"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 5, ease: 'easeOut' }}
+            style={{ transformOrigin: 'left' }}
+          />
+        </div>
+      )}
+
+      {/* Breathing pulse dot next to heading during loading */}
       <div className="mb-10">
-        <h2 className="text-3xl font-bold tracking-tight text-ink font-display">
-          Triage Assessment
+        <h2 className="text-3xl font-bold tracking-tight text-ink font-display flex items-center gap-3">
+          {loading ? 'Processing Triage' : 'Triage Assessment'}
+          {loading && (
+            <span className="relative flex size-2.5" aria-label="Processing">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-accent/40" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-accent" />
+            </span>
+          )}
         </h2>
         <p className="mt-2 text-sm text-muted font-sans">
-          AI-generated analysis based on submitted symptoms and context.
+          {loading
+            ? 'AI is analyzing your submission. This may take a few seconds.'
+            : 'AI-generated analysis based on submitted symptoms and context.'}
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <AnimatePresence mode="wait">
           {showSkeletons ? (
-            <motion.div
-              key="skeletons"
-              className="contents"
-              exit={{ opacity: 0, transition: { duration: 0.12 } }}
-            >
-              <SkeletonCard label="Urgency" />
-              <SkeletonCard label="Rationale" className="lg:col-span-2" />
-              <SkeletonCard label="Sources" />
-              <SkeletonCard label="Disclaimer" className="lg:col-span-2" />
-            </motion.div>
+            loading ? (
+              <LoadingSequence key="loading-sequence" />
+            ) : (
+              <motion.div
+                key="skeletons"
+                className="contents"
+                exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              >
+                <SkeletonCard label="Urgency" />
+                <SkeletonCard label="Rationale" className="lg:col-span-2" />
+                <SkeletonCard label="Sources" />
+                <SkeletonCard label="Disclaimer" className="lg:col-span-2" />
+              </motion.div>
+            )
           ) : (
             <motion.div key="content" className="contents">
               {/* Urgency */}
