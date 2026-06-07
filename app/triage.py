@@ -1,4 +1,5 @@
-from app.llm import rag_response
+from app.llm import LLMError, rag_response, vision_response
+from app.config import get_settings
 from app.models import PatientContext, TriageResult, Urgency, VisionResult
 
 
@@ -43,13 +44,28 @@ URGENCY_RANK: dict[Urgency, int] = {
 }
 
 
-def classify_text(symptoms: str, patient_context: PatientContext | None) -> TriageResult:
+def classify_text(
+    symptoms: str,
+    patient_context: PatientContext | None = None,
+    vision_result: VisionResult | None = None,
+) -> TriageResult:
     text = symptoms.lower()
     rule_urgency = _select_urgency(text)
+
+    vision_findings: str | None = None
+    if vision_result is not None:
+        parts = [f"Risk: {vision_result.risk}"]
+        if vision_result.rationale:
+            parts.append(f"Findings: {vision_result.rationale}")
+        if vision_result.confidence is not None:
+            parts.append(f"Confidence: {vision_result.confidence:.2f}")
+        vision_findings = "\n".join(parts)
+
     rag_result = rag_response(
         symptoms,
         patient_context=patient_context,
         rule_urgency=rule_urgency,
+        vision_findings=vision_findings,
     )
     urgency = _highest_urgency(rule_urgency, rag_result.urgency)
     rationale = rag_result.rationale
@@ -72,14 +88,33 @@ def classify_text(symptoms: str, patient_context: PatientContext | None) -> Tria
     )
 
 
-def build_vision_placeholder(has_image: bool) -> VisionResult | None:
-    if not has_image:
+def classify_vision(
+    image_bytes: bytes,
+    patient_context: PatientContext | None = None,
+) -> VisionResult | None:
+    """Run MedGemma multimodal analysis on the uploaded image.
+
+    Returns None when no image is provided.  Degrades gracefully when
+    vision is disabled or inference fails so the triage endpoint remains
+    available.
+    """
+    settings = get_settings()
+    if not image_bytes:
         return None
-    return VisionResult(
-        risk="insufficient confidence",
-        confidence=None,
-        rationale="Vision model inference is not wired in this functional scaffold.",
-    )
+    if not settings.vision_enabled:
+        return VisionResult(
+            risk="insufficient confidence",
+            confidence=None,
+            rationale="Vision model is not yet deployed — placeholder mode active.",
+        )
+    try:
+        return vision_response(image_bytes, patient_context=patient_context)
+    except LLMError:
+        return VisionResult(
+            risk="insufficient confidence",
+            confidence=None,
+            rationale="Vision model inference failed — check model compatibility.",
+        )
 
 
 def _select_urgency(text: str) -> Urgency:
