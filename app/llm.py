@@ -104,11 +104,20 @@ def _format_patient_context(patient_context: PatientContext | None) -> str:
     return ", ".join(values) if values else "Not provided"
 
 
-def _chat_with_ollama(model: str, messages: list[dict[str, str]]) -> str:
+def _chat_with_ollama(
+    model: str,
+    messages: list[dict[str, str]],
+    images: list[str] | None = None,
+) -> str:
     try:
         from ollama import chat
     except ImportError as exc:
         raise LLMError("The Ollama Python package is not installed.") from exc
+
+    # Embed images in the last message dict (ollama Python client 0.6.x API)
+    if images:
+        messages = [dict(m) for m in messages]  # shallow copy
+        messages[-1]["images"] = images
 
     try:
         response = chat(
