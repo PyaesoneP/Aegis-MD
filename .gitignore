@@ -23,3 +23,9 @@ data/guidelines/*.pdf
 
 # Chromadb
 data/chroma/chroma_db/
+
+# Ollama models (copied from /usr/share/ollama/.ollama/models/ before Docker build)
+ollama_models/
+
+# ChromaDB ONNX embedding model (copied from ~/.cache/chroma/ before Docker build)
+.cache/
