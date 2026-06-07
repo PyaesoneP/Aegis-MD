@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     # ── Networking ──────────────────────────────────────────────────────
     allowed_origins: str = "http://localhost:5173,https://pyaesonep.github.io"
-    cors_allow_headers: str = "content-type,accept"
+    cors_allow_headers: str = "content-type,accept,authorization,x-requested-with"
 
     # ── Logging & observability ─────────────────────────────────────────
     log_dir: str = "logs"
