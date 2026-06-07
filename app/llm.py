@@ -138,7 +138,7 @@ def _chat_with_ollama(
             model=model,
             messages=messages,
             format="json",
-            options={"temperature": 0},
+            options={"temperature": 0, "num_predict": 256},
         )
     except Exception as exc:
         raise LLMError("Ollama chat request failed.") from exc
