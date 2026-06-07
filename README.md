@@ -26,7 +26,7 @@ Aegis-MD is a **minimum viable prototype (MVP)** of a multimodal clinical triage
 
 - **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK)
 - **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL` and can be replaced with another Ollama-compatible model or an on-disk GGUF runtime.
-- **Computer Vision** risk stratification using a fine-tuned EfficientNet-B0 for skin-lesion screening
+- **Computer Vision** risk stratification using the same Ollama-hosted multimodal model (MedGemma) for image analysis, with structured findings fed back into the text triage prompt for holistic urgency classification
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
 
@@ -55,9 +55,12 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ###  Vision Risk Stratification
 - Optional image upload (JPEG/PNG, max 5 MB)
-- Fine-tuned **EfficientNet-B0** on HAM10000 for binary lesion risk: `High-Risk` vs. `Low-Risk`
-- Confidence-gated output (> 0.70 threshold); returns "insufficient confidence" if below
-- **p95 latency target:** < 500 ms
+- **MedGemma multimodal model** (same Ollama instance as text triage) for image analysis
+- Classifies risk into three tiers: `High-Risk`, `Low-Risk`, `insufficient confidence`
+- Confidence scored as a float (0.0–1.0) with structured rationale
+- Vision findings are passed into the text triage LLM prompt, enabling the urgency classification to incorporate visual evidence
+- Configurable via `AEGIS_VISION_ENABLED` (default: `true`); graceful fallback when disabled
+- **p95 latency target:** < 2,000 ms
 
 ###  Security Gateway
 - FastAPI middleware intercepts all inputs **before** they reach the LLM
@@ -84,12 +87,12 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | **LLM** | MedGemma / MedGemma-1.5 (4B) via Ollama (configurable via `Aegis_LLM_MODEL`) |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (in-memory, baked into container) |
-| **Vision** | PyTorch, EfficientNet-B0 (fine-tuned on HAM10000) |
+| **Vision** | Ollama multimodal (same model as LLM), base64 image encoding |
 | **Security** | Custom FastAPI middleware, regex filters, rate limiting |
 | **Monitoring** | Prometheus client, custom HTML dashboard |
 | **Deployment** | Docker, Google Cloud Run |
 | **CI/CD** | GitHub Actions (pytest → build → deploy) |
-| **Frontend** | React (static, hosted on GitHub Pages) |
+| **Frontend** | React 18, TypeScript, Tailwind CSS, Vite, Vitest + Testing Library (GitHub Pages) |
 
 ---
 
@@ -117,15 +120,23 @@ pip install -r requirements.txt
 ### 3. Models & retrieval
 This backend now uses a local Ollama-hosted model for RAG-enabled triage. The model reference is configurable via the environment variable `Aegis_LLM_MODEL` (default set in `app/config.py`). Retrieval is performed using ChromaDB; configure the storage path and collection via `Aegis_CHROMA_PATH` and `Aegis_CHROMA_COLLECTION`.
 
-If you plan to run RAG locally with Ollama:
+If you plan to run RAG and vision locally with Ollama:
 
 ```bash
 # Install and run Ollama (see https://ollama.com/docs)
-# Example: pull a model into your Ollama instance (model ref must match Aegis_LLM_MODEL)
+# Pull the multimodal model (model ref must match Aegis_LLM_MODEL)
 ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16
 
 # Start Ollama daemon (platform-specific)
 ollama serve
+
+# Verify multimodal support
+curl http://localhost:11434/api/show -d '{"name": "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16"}'
+```
+
+To disable vision while keeping text triage active:
+```bash
+export AEGIS_VISION_ENABLED=false
 ```
 
 If you prefer to run a local GGUF model directly with another runtime, place model files under `./models/` and update `Aegis_LLM_MODEL` accordingly.
@@ -151,6 +162,7 @@ Backend environment variables:
 | `Aegis_CHROMA_PATH` | `data/chroma/chroma_db` | Filesystem path for ChromaDB persistence |
 | `Aegis_CHROMA_COLLECTION` | `guidelines` | Chroma collection name for guideline chunks |
 | `Aegis_RETRIEVAL_TOP_K` | `3` | Number of guideline chunks to retrieve per query |
+| `AEGIS_VISION_ENABLED` | `true` | Enable/disable multimodal vision inference |
 
 ### 5. Test the API
 ```bash
@@ -255,7 +267,11 @@ Submit a triage request.
     "sources": ["Australian ETEK Ch. 4", "MOH Hypertension CPG"],
     "disclaimer": "This is a research prototype, not a substitute for professional medical advice."
   },
-  "vision_result": null,
+  "vision_result": {
+    "risk": "High-Risk",
+    "confidence": 0.95,
+    "rationale": "The image shows a significant open wound on the scalp with visible bleeding and surrounding inflammation. This suggests potential trauma or injury requiring urgent medical attention."
+  },
   "latency_ms": 1240,
   "security_passed": true
 }
@@ -271,7 +287,7 @@ Submit a triage request.
 ```
 
 ### `GET /health`
-Health check. Returns component status.
+Health check with per-component status (api, security, text_model, retrieval, vision_model, observability).  Each component reports `ok`, `degraded`, or `placeholder`.
 
 ### `GET /metrics`
 Prometheus metrics endpoint.
@@ -286,10 +302,12 @@ Lightweight HTML monitoring dashboard.
 | Test | Dataset | Pass Threshold |
 |---|---|---|
 | Text triage accuracy | 50 hand-crafted synthetic vignettes | ≥ 70% exact-match urgency |
-| Vision confidence gate | 20 HAM10000 test images | ≥ 80% high-risk flagged with confidence > 0.70 |
+| Vision confidence gate | 20 synthetic medical images (wound, rash, lesion) | ≥ 80% high-risk flagged with confidence > 0.70 |
 | Security gateway | 20 known prompt-injection strings | ≥ 90% blocked |
+| Backend unit tests | `tests/` (pytest) | 36 tests passing |
+| Frontend unit tests | `frontend/` (Vitest + Testing Library) | Shell component form submission test passing |
 | Rate limiting | 15 rapid requests from same IP | Requests 11–15 return `429` |
-| Latency | `locust` load test (10 users, 5 min) | p95 text < 3,000 ms; p95 vision < 500 ms |
+| Latency | `locust` load test (10 users, 5 min) | p95 text < 3,000 ms; p95 vision < 2,000 ms |
 
 Run evaluation suite:
 ```bash
