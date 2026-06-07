@@ -1,25 +1,24 @@
-# ── Base: CUDA runtime for L4 GPU support on Cloud Run ──────────────
-# Ubuntu 24.04 ships Python 3.12 natively — no PPA needed.
-FROM nvidia/cuda:12.6.3-base-ubuntu24.04
+# ── Base: Official Ollama image (CUDA-enabled, L4 GPU compatible) ────
+FROM ollama/ollama:latest
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
     OLLAMA_MODELS=/app/ollama_models
 
-# ── Install Python 3.12 + system deps ───────────────────────────────
+# ── Install Python 3.12 ─────────────────────────────────────────────
+# Ubuntu version varies; deadsnakes PPA covers both 22.04 and 24.04.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3-pip \
     curl \
-    zstd \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 \
     && rm -rf /var/lib/apt/lists/*
-
-# ── Install Ollama ──────────────────────────────────────────────────
-RUN curl -fsSL https://ollama.com/install.sh | sh
 
 # ── Copy pre-downloaded Ollama model from local filesystem ──────────
 # Before building, copy your local Ollama model into the build context:
