@@ -16,6 +16,8 @@
 
 Upload a symptom description (and optionally a skin-lesion image) to receive an informational triage urgency suggestion with explainable sources and confidence indicators. The backend runs on Cloud Run (CPU-only by default); cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
 
+![Aegis-MD Demo](./assets/Aegis-MD.gif)
+
 > **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. With an L4 GPU the same pipeline completes in ~46s, and with a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
 
 To debug connectivity issues, open the browser DevTools console and run:
