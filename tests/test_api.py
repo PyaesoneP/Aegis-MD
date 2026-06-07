@@ -14,7 +14,7 @@ def client(tmp_path, monkeypatch):
     settings = Settings(log_dir=str(tmp_path / "logs"))
     monkeypatch.setattr(
         "app.triage.rag_response",
-        lambda symptoms, patient_context=None, rule_urgency=None: RagResponse(
+        lambda symptoms, patient_context=None, rule_urgency=None, vision_findings=None: RagResponse(
             urgency=rule_urgency or "Routine",
             rationale="Stubbed RAG response for tests.",
             confidence="high",
@@ -185,7 +185,7 @@ def test_rate_limit_blocks_eleventh_request(tmp_path, monkeypatch):
     settings = Settings(log_dir=str(tmp_path / "logs"))
     monkeypatch.setattr(
         "app.triage.rag_response",
-        lambda symptoms, patient_context=None, rule_urgency=None: RagResponse(
+        lambda symptoms, patient_context=None, rule_urgency=None, vision_findings=None: RagResponse(
             urgency=rule_urgency or "Routine",
             rationale="Stubbed RAG response for rate limit tests.",
             confidence="high",
