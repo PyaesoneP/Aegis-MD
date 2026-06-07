@@ -12,3 +12,5 @@ logs
 frontend/node_modules
 frontend/dist
 frontend/.vite
+# Source PDFs are indexed into chroma_db; only the index is needed at runtime.
+data/guidelines/*.pdf
