@@ -101,14 +101,14 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | Layer | Technology |
 |---|---|
 | **Backend** | Python 3.12, FastAPI, Uvicorn |
-| **LLM** | MedGemma-1.5 (4B, Q4_K_XL quantized, 3.4 GB) via Ollama (configurable via `Aegis_LLM_MODEL`) |
+| **LLM** | MedGemma-1.5 (4B, Q4_K_XL quantized, 3.4 GB) via Ollama (configurable via `Aegis_LLM_MODEL`). Note: The default in `app/config.py` is `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL`. |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
-| **Vector DB** | ChromaDB (in-memory, baked into container) |
+| **Vector DB** | ChromaDB (persistent on disk, initialized via `data/chroma/chunk.py`) |
 | **Vision** | Ollama multimodal (same model as LLM), base64 image encoding |
 | **Security** | Scored heuristics (pass/warn/block), 16+ injection patterns, Unicode defense, burst-aware rate limiting, circuit breaker, security headers |
 | **Monitoring** | Prometheus client, custom HTML dashboard |
 | **Deployment** | Docker, Google Cloud Run |
-| **CI/CD** | GitHub Actions (pytest → build → deploy) |
+| **CI/CD** | GitHub Actions (pytest only for backend; frontend deploys to GitHub Pages) |
 | **Frontend** | React 18, TypeScript, Tailwind CSS, Vite, Vitest + Testing Library (GitHub Pages) |
 
 ---
@@ -158,7 +158,7 @@ export Aegis_VISION_ENABLED=false
 
 If you prefer to run a local GGUF model directly with another runtime, place model files under `./models/` and update `Aegis_LLM_MODEL` accordingly.
 
-Guideline PDFs remain under `./data/guidelines/` and are chunked/embedded when you first run the app (or via your ingestion script).
+Guideline PDFs remain under `./data/guidelines/` and are chunked/embedded by running the `data/chroma/chunk.py` script. This script must be executed once to prepare the ChromaDB collection.
 
 ### 4. Run the FastAPI server locally
 ```bash
@@ -219,7 +219,7 @@ npm run dev
 ```
 
 The frontend dev server will be available at `http://localhost:5173/Aegis-MD/`.
-Local API calls are configured through `frontend/.env.development`:
+Local API calls are configured through `frontend/.env.development`. Note: This file is not committed to the repository and needs to be created manually based on `frontend/.env.development.example` if it exists, or by creating a new file with the specified content.
 
 ```bash
 VITE_API_BASE_URL=http://localhost:8000
@@ -372,23 +372,7 @@ Lightweight HTML monitoring dashboard.
 
 ##  Evaluation
 
-| Test | Dataset | Pass Threshold |
-|---|---|---|
-| Text triage accuracy | 50 hand-crafted synthetic vignettes | ≥ 70% exact-match urgency |
-| Vision confidence gate | 20 synthetic medical images (wound, rash, lesion) | ≥ 80% high-risk flagged with confidence > 0.70 |
-| Security gateway | 16+ prompt-injection patterns across 7 attack families | ≥ 95% blocked |
-| Security gateway (unicode) | Homoglyph + fullwidth + control-character attacks | 100% blocked or sanitized |
-| Backend unit tests | `tests/` (pytest) | 72 tests passing |
-| Frontend unit tests | `frontend/` (Vitest + Testing Library) | Shell component form submission test passing |
-| Rate limiting | 15 rapid requests from same IP | Requests 11–15 return `429` |
-| Security headers | Standard response headers on all endpoints | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` present |
-| Circuit breaker | 5 consecutive downstream failures | Circuit opens; fast-fail 503 without calling dependency |
-| Latency | `locust` load test (10 users, 5 min) | p95 text < 3,000 ms; p95 vision < 2,000 ms |
-
-Run evaluation suite:
-```bash
-python -m evaluation.run_all
-```
+**Note:** The evaluation suite described in previous versions of this README has not yet been implemented or performed. The project currently includes unit tests for the backend and frontend, but comprehensive evaluation metrics for triage accuracy, vision confidence, and security gateway performance are pending.
 
 ---
 
@@ -401,8 +385,8 @@ python -m evaluation.run_all
 - **Mandatory disclaimer:** Every response includes a clear statement that this is not a substitute for professional medical advice.
 - **Guardrails:** The LLM is constrained to 4 urgency tiers via structured prompting. The security gateway blocks known jailbreak attempts.
 - **Known limitations:**
-  - The SLM (Gemma-2B) can hallucinate. The RAG layer grounds it in guideline text, but errors are possible.
-  - The vision model is trained on dermoscopic images and may not generalize to smartphone photos.
+  - The LLM can hallucinate. The RAG layer grounds it in guideline text, but errors are possible.
+  - The vision model uses the same Ollama instance as the text triage model. Its output is constrained to specific risk labels (`High-Risk`, `Low-Risk`, `insufficient confidence`) and a 0-1 float confidence score. While it processes general medical images, its performance may vary depending on the image type and quality.
   - The security filter uses scored regex heuristics with Unicode defense — effective against common attacks but novel ML-based jailbreaks may still bypass it.
   - English language only in the MVP.
 
