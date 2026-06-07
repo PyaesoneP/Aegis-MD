@@ -80,8 +80,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "detail": retrieval_detail,
                 },
                 "vision_model": {
-                    "status": "placeholder",
-                    "detail": "Image validation is active; model inference is pending.",
+                    "status": text_model_status if settings.vision_enabled else "placeholder",
+                    "detail": (
+                        "MedGemma multimodal model — same instance as text model."
+                        if settings.vision_enabled
+                        else "Vision inference is disabled (vision_enabled=False)."
+                    ),
                 },
                 "observability": {
                     "status": "ok",
