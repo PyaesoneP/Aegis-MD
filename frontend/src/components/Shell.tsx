@@ -49,9 +49,8 @@ export function Shell() {
       }, 0)
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        setApiError(
-          typeof err.payload === 'string' ? err.payload : 'Triage request failed',
-        )
+        // Use the descriptive message (includes URL, status, and hint for fallback URLs).
+        setApiError(err.message)
       } else if (err instanceof Error) {
         setApiError(err.message)
       } else {
