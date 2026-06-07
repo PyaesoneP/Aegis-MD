@@ -63,19 +63,27 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **p95 latency target:** < 2,000 ms
 
 ###  Security Gateway
-- FastAPI middleware intercepts all inputs **before** they reach the LLM
-- Regex + keyword filter blocks known prompt-injection patterns:
-  - `ignore previous instructions`, `DAN mode`, `jailbreak`, Base64-encoded attacks
-- Rate limiting: 10 requests/minute per IP (sliding window)
-- Security events logged to JSONL + Prometheus counter `aegis_security_blocked_total`
+- **Defense-in-depth** pipeline intercepts all inputs **before** they reach the LLM
+- **Scored heuristics** (PASS / WARN / BLOCK): borderline cases are logged for observability without blocking legitimate use; severe attacks return 400
+- **16+ injection patterns** across 7 attack families: instruction override, DAN/jailbreak, prompt extraction, encoding evasion, delimiter attacks, role-play override, recursive/nesting attacks
+- **Unicode defense**: NFKC normalization + homoglyph remapping (Cyrillic, Greek, Fullwidth → ASCII) neutralizes character-level evasion
+- **Control-character stripping**: null bytes, zero-width chars, and Unicode control blocks removed before pattern matching
+- **Per-field inspection**: both `symptoms` and `patient_context` are checked recursively for injection patterns; JSON depth and size limits enforced
+- **Image validation**: magic-byte verification (JPEG FF D8 FF / PNG 89 50 4E 47) in addition to Content-Type and size checks
+- **Burst-aware rate limiting**: sliding window with configurable burst allowance (2× sustained for 5 s); per-endpoint limits (triage, health, metrics, dashboard)
+- **Circuit breaker**: automatic fail-open when downstream LLM/ChromaDB error rate exceeds threshold; auto-recovery after cooldown
+- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-Permitted-Cross-Domain-Policies`, configurable HSTS
+- **Output safety**: response fields truncated to configurable max lengths to prevent unbounded LLM output
+- Security events logged with rotation (JSONL) + Prometheus counters `aegis_security_blocked_total` and `aegis_security_warned_total`
 
 ###  Monitoring Dashboard
-- `/metrics` endpoint exposes Prometheus histograms for latency, throughput, and block rates
+- `/metrics` endpoint exposes Prometheus histograms and counters for latency, throughput, block/warn rates, circuit breaker state, and urgency distribution
 - `/dashboard` serves a lightweight HTML view of:
   - Request volume (24h)
   - Average latency (text vs. vision)
-  - Security block count
+  - Security block + warn counts
   - Urgency distribution
+- **Structured audit logging**: every triage request is logged with request ID, client hash, latency, urgency, security verdict, and image presence (rotating JSONL, 10 MB/file, 3 backups)
 
 ---
 
@@ -88,7 +96,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (in-memory, baked into container) |
 | **Vision** | Ollama multimodal (same model as LLM), base64 image encoding |
-| **Security** | Custom FastAPI middleware, regex filters, rate limiting |
+| **Security** | Scored heuristics (pass/warn/block), 16+ injection patterns, Unicode defense, burst-aware rate limiting, circuit breaker, security headers |
 | **Monitoring** | Prometheus client, custom HTML dashboard |
 | **Deployment** | Docker, Google Cloud Run |
 | **CI/CD** | GitHub Actions (pytest → build → deploy) |
@@ -156,13 +164,30 @@ Backend environment variables:
 |---|---|---|
 | `Aegis_ALLOWED_ORIGINS` | `http://localhost:5173,https://pyaesonep.github.io` | Comma-separated CORS allowlist |
 | `Aegis_LOG_DIR` | `logs` | Directory for security JSONL events |
-| `Aegis_RATE_LIMIT_REQUESTS` | `10` | Requests allowed per client window |
+| `Aegis_RATE_LIMIT_REQUESTS` | `10` | Requests allowed per client window (triage endpoint) |
 | `Aegis_RATE_LIMIT_WINDOW_SECONDS` | `60` | Sliding window length |
+| `Aegis_RATE_LIMIT_BURST_MULTIPLIER` | `2.0` | Burst allowance multiplier (× sustained) |
+| `Aegis_RATE_LIMIT_BURST_SECONDS` | `5.0` | Burst window duration |
+| `Aegis_RATE_LIMIT_HEALTH_REQUESTS` | `60` | Rate limit for `/health` endpoint |
+| `Aegis_RATE_LIMIT_METRICS_REQUESTS` | `60` | Rate limit for `/metrics` endpoint |
+| `Aegis_RATE_LIMIT_DASHBOARD_REQUESTS` | `30` | Rate limit for `/dashboard` endpoint |
+| `Aegis_CORS_ALLOW_HEADERS` | `content-type,accept` | Allowed CORS request headers |
+| `Aegis_ENABLE_HSTS` | `false` | Enable Strict-Transport-Security header |
+| `Aegis_MAX_BODY_BYTES` | `10485760` | Maximum request body size (10 MB) |
+| `Aegis_MAX_JSON_DEPTH` | `5` | Max nesting depth for patient_context JSON |
+| `Aegis_MAX_JSON_BYTES` | `10240` | Max raw size for patient_context JSON (10 KB) |
+| `Aegis_MAX_IMAGE_MEGAPIXELS` | `100` | Max image resolution (decompression-bomb guard) |
+| `Aegis_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `5` | Consecutive downstream failures to open circuit |
+| `Aegis_CIRCUIT_BREAKER_RECOVERY_SECONDS` | `30.0` | Cooldown before half-open probe |
 | `Aegis_LLM_MODEL` | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16` | Ollama model reference used for RAG triage |
 | `Aegis_CHROMA_PATH` | `data/chroma/chroma_db` | Filesystem path for ChromaDB persistence |
 | `Aegis_CHROMA_COLLECTION` | `guidelines` | Chroma collection name for guideline chunks |
 | `Aegis_RETRIEVAL_TOP_K` | `3` | Number of guideline chunks to retrieve per query |
 | `AEGIS_VISION_ENABLED` | `true` | Enable/disable multimodal vision inference |
+| `Aegis_MAX_RATIONALE_CHARS` | `4000` | Max characters for triage rationale output |
+| `Aegis_MAX_DISCLAIMER_CHARS` | `500` | Max characters for medical disclaimer output |
+| `Aegis_LOG_MAX_BYTES` | `10485760` | Max bytes per security log file (10 MB) |
+| `Aegis_LOG_BACKUP_COUNT` | `3` | Number of rotated log backups to keep |
 
 ### 5. Test the API
 ```bash
@@ -277,12 +302,37 @@ Submit a triage request.
 }
 ```
 
-**Blocked Response (400):**
+**Blocked Response (400 — prompt injection / invalid input):**
 ```json
 {
   "error": "Security policy violation: potentially malicious input detected.",
   "request_id": "...",
   "security_passed": false
+}
+```
+
+**Rate-Limited Response (429):**
+```json
+{
+  "error": "Rate limit exceeded. Please wait before submitting another request.",
+  "request_id": "...",
+  "security_passed": false
+}
+```
+
+**Body Too Large (413):**
+```json
+{
+  "error": "Request body exceeds 10 MB limit",
+  "request_id": "...",
+  "security_passed": false
+}
+```
+
+**Service Unavailable — Circuit Open (503):**
+```json
+{
+  "detail": "Service temporarily unavailable — downstream dependencies are failing."
 }
 ```
 
@@ -303,10 +353,13 @@ Lightweight HTML monitoring dashboard.
 |---|---|---|
 | Text triage accuracy | 50 hand-crafted synthetic vignettes | ≥ 70% exact-match urgency |
 | Vision confidence gate | 20 synthetic medical images (wound, rash, lesion) | ≥ 80% high-risk flagged with confidence > 0.70 |
-| Security gateway | 20 known prompt-injection strings | ≥ 90% blocked |
-| Backend unit tests | `tests/` (pytest) | 36 tests passing |
+| Security gateway | 16+ prompt-injection patterns across 7 attack families | ≥ 95% blocked |
+| Security gateway (unicode) | Homoglyph + fullwidth + control-character attacks | 100% blocked or sanitized |
+| Backend unit tests | `tests/` (pytest) | 72 tests passing |
 | Frontend unit tests | `frontend/` (Vitest + Testing Library) | Shell component form submission test passing |
 | Rate limiting | 15 rapid requests from same IP | Requests 11–15 return `429` |
+| Security headers | Standard response headers on all endpoints | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` present |
+| Circuit breaker | 5 consecutive downstream failures | Circuit opens; fast-fail 503 without calling dependency |
 | Latency | `locust` load test (10 users, 5 min) | p95 text < 3,000 ms; p95 vision < 2,000 ms |
 
 Run evaluation suite:
@@ -327,7 +380,7 @@ python -m evaluation.run_all
 - **Known limitations:**
   - The SLM (Gemma-2B) can hallucinate. The RAG layer grounds it in guideline text, but errors are possible.
   - The vision model is trained on dermoscopic images and may not generalize to smartphone photos.
-  - The security filter is regex-based and will not catch all novel prompt-injection strategies.
+  - The security filter uses scored regex heuristics with Unicode defense — effective against common attacks but novel ML-based jailbreaks may still bypass it.
   - English language only in the MVP.
 
 If you discover a safety issue or bypass, please open a GitHub issue or email me directly.
@@ -355,7 +408,8 @@ These documents are used under their respective public-domain / non-commercial e
 - [x] MVP: Prompt-injection security gateway
 - [x] MVP: Prometheus monitoring + dashboard
 - [ ] Post-MVP: Adversarial image detection (FGSM demo + rejection)
-- [ ] Post-MVP: ML-based intent classification guard (upgrade from regex)
+- [x] Post-MVP: Scored heuristics security gateway (16+ patterns, Unicode defense, burst rate limiting, circuit breaker, security headers)
+- [ ] Post-MVP: ML-based intent classification guard (further upgrade from scored regex heuristics)
 - [ ] Post-MVP: Edge deployment (ONNX Runtime + Raspberry Pi)
 - [ ] Post-MVP: Multilingual support (Burmese / Chinese)
 - [ ] Post-MVP: Synthetic patient vignette expansion (500 cases)
