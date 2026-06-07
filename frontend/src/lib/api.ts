@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-const TRIAGE_TIMEOUT_MS = 120_000
+const TRIAGE_TIMEOUT_MS = 600_000 // 10 minutes — Cloud Run LLM inference is slow on L4 GPU
 
 function triageUrl(): string {
   return `${API_BASE_URL}/api/v1/triage`
