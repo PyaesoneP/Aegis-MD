@@ -14,7 +14,7 @@ export class ApiError extends Error {
   }
 }
 
-const TRIAGE_TIMEOUT_MS = 30_000
+const TRIAGE_TIMEOUT_MS = 120_000
 
 export async function submitTriage(
   request: TriageRequest,
