@@ -29,7 +29,7 @@ import('/assets/index.js').then(m => m.diagnose().then(console.log))
 
 Aegis-MD is a **minimum viable prototype (MVP)** of a multimodal clinical triage agent. It combines:
 
-- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK)
+- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK). The current corpus is limited to 5 documents — a production system would index orders of magnitude more sources across specialties.
 - **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL` and can be replaced with another Ollama-compatible model or an on-disk GGUF runtime.
 - **Computer Vision** risk stratification using the same Ollama-hosted multimodal model (MedGemma) for image analysis, with structured findings fed back into the text triage prompt for holistic urgency classification
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
@@ -53,7 +53,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ###  Text Triage (RAG + SLM)
 - Accepts natural-language symptom descriptions (max 2,000 characters)
-- Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs**
+- Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK). The guideline corpus is intentionally small for this MVP — a production system would index hundreds of peer-reviewed sources across multiple languages and specialties.
 - Classifies urgency into 4 tiers: `Emergency`, `Urgent`, `Routine`, `Self-Care`
 - Returns structured rationale, source citations, and a mandatory medical disclaimer
 - **Latency:** ~2-3 min cold start, ~25-30s warm on 4 vCPU (CPU-only); ~46s warm on L4 GPU. The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference and would be significantly faster on provisioned hardware.
