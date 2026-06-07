@@ -1,9 +1,10 @@
+import base64
 import json
 from dataclasses import dataclass
 from typing import Any, get_args
 
 from app.config import get_settings
-from app.models import Confidence, PatientContext, Urgency
+from app.models import Confidence, PatientContext, Urgency, VisionResult
 from app.retriever import RetrievedGuideline, retrieve_relevant_guidelines
 
 
@@ -22,12 +23,14 @@ class RagResponse:
 SYSTEM_PROMPT = """
 You are Aegis-MD, a research triage assistant.
 Classify urgency only. Do not diagnose. Do not prescribe treatment.
-Use only the retrieved guideline context and the patient symptom text.
+Use the patient symptom text, retrieved guideline context, and (if provided) image analysis findings.
 Return JSON only, with exactly these keys:
 urgency, rationale, confidence.
 urgency must be one of: Emergency, Urgent, Routine, Self-Care.
 confidence must be one of: low, medium, high.
 The rationale must be brief, safety-focused, and cite guideline chunks using [1], [2], etc.
+When image analysis findings are present, reference them directly without reinterpreting or
+inventing visual details not stated in the findings.  Do not describe the image yourself.
 """.strip()
 
 URGENCY_VALUES = set(get_args(Urgency))
@@ -38,6 +41,7 @@ def rag_response(
     query: str,
     patient_context: PatientContext | None = None,
     rule_urgency: Urgency | None = None,
+    vision_findings: str | None = None,
 ) -> RagResponse:
     settings = get_settings()
     guidelines = retrieve_relevant_guidelines(
@@ -56,6 +60,7 @@ def rag_response(
                     patient_context=patient_context,
                     rule_urgency=rule_urgency,
                     guidelines=guidelines,
+                    vision_findings=vision_findings,
                 ),
             },
         ],
@@ -76,6 +81,7 @@ def _build_user_prompt(
     patient_context: PatientContext | None,
     rule_urgency: Urgency | None,
     guidelines: list[RetrievedGuideline],
+    vision_findings: str | None = None,
 ) -> str:
     patient_context_text = _format_patient_context(patient_context)
     rule_urgency_text = rule_urgency or "No rule-based prior"
@@ -84,12 +90,20 @@ def _build_user_prompt(
         for index, guideline in enumerate(guidelines, start=1)
     )
 
-    return (
+    prompt = (
         f"Symptoms:\n{query}\n\n"
         f"Patient context:\n{patient_context_text}\n\n"
         f"Rule-based urgency prior:\n{rule_urgency_text}\n\n"
         f"Retrieved guideline chunks:\n{guideline_text}"
     )
+
+    if vision_findings:
+        prompt += (
+            f"\n\nImage analysis findings (produced by a separate vision model — "
+            f"reference verbatim, do not re-describe the image):\n{vision_findings}"
+        )
+
+    return prompt
 
 
 def _format_patient_context(patient_context: PatientContext | None) -> str:
@@ -104,11 +118,20 @@ def _format_patient_context(patient_context: PatientContext | None) -> str:
     return ", ".join(values) if values else "Not provided"
 
 
-def _chat_with_ollama(model: str, messages: list[dict[str, str]]) -> str:
+def _chat_with_ollama(
+    model: str,
+    messages: list[dict[str, str]],
+    images: list[str] | None = None,
+) -> str:
     try:
         from ollama import chat
     except ImportError as exc:
         raise LLMError("The Ollama Python package is not installed.") from exc
+
+    # Embed images in the last message dict (ollama Python client 0.6.x API)
+    if images:
+        messages = [dict(m) for m in messages]  # shallow copy
+        messages[-1]["images"] = images
 
     try:
         response = chat(
@@ -186,4 +209,69 @@ def _normalize_confidence(value: Any) -> Confidence:
     confidence = str(value or "").strip().lower()
     if confidence not in CONFIDENCE_VALUES:
         raise LLMError("Ollama response contained an invalid confidence.")
+    return confidence
+
+
+def vision_response(
+    image_bytes: bytes,
+    patient_context: PatientContext | None = None,
+) -> VisionResult:
+    """Run MedGemma multimodal inference on a medical image.
+
+    Encodes the image as base64, sends it alongside a text prompt to the
+    same Ollama model used for text triage, and parses the JSON response.
+    """
+    settings = get_settings()
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    patient_context_text = _format_patient_context(patient_context)
+
+    user_prompt = (
+        f"Analyze the attached medical image.\n\n"
+        f"Patient context: {patient_context_text}"
+    )
+
+    raw_content = _chat_with_ollama(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": settings.vision_system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        images=[image_b64],
+    )
+    payload = _parse_json_payload(raw_content)
+
+    risk = _normalize_vision_risk(payload.get("risk"))
+    confidence = _normalize_vision_confidence(payload.get("confidence"))
+    rationale = _require_text(payload.get("rationale"), "rationale")
+
+    return VisionResult(risk=risk, confidence=confidence, rationale=rationale)
+
+
+def _normalize_vision_risk(value: Any) -> str:
+    text = str(value or "").strip()
+    normalized = text.lower().replace("_", "-")
+    aliases = {
+        "high-risk": "High-Risk",
+        "high risk": "High-Risk",
+        "low-risk": "Low-Risk",
+        "low risk": "Low-Risk",
+        "insufficient confidence": "insufficient confidence",
+        "insufficient": "insufficient confidence",
+        "uncertain": "insufficient confidence",
+    }
+    risk = aliases.get(normalized, text)
+    if risk not in {"High-Risk", "Low-Risk", "insufficient confidence"}:
+        raise LLMError("Ollama response contained an invalid vision risk.")
+    return risk
+
+
+def _normalize_vision_confidence(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        raise LLMError("Ollama response contained an invalid vision confidence.")
+    if not (0 <= confidence <= 1):
+        raise LLMError("Vision confidence must be between 0 and 1.")
     return confidence

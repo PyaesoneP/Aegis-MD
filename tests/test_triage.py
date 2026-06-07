@@ -10,7 +10,7 @@ from app.triage import classify_text
 def test_classify_text_uses_rule_urgency_when_higher(monkeypatch):
     monkeypatch.setattr(
         "app.triage.rag_response",
-        lambda symptoms, patient_context, rule_urgency: RagResponse(
+        lambda symptoms, patient_context, rule_urgency, vision_findings=None: RagResponse(
             urgency="Routine",
             rationale="LLM says routine.",
             confidence="medium",

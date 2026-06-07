@@ -19,6 +19,17 @@ class Settings(BaseSettings):
     chroma_path: str = "data/chroma/chroma_db"
     chroma_collection: str = "guidelines"
     retrieval_top_k: int = 3
+    vision_enabled: bool = True
+    vision_system_prompt: str = (
+        "You are Aegis-MD, a research triage assistant with medical image analysis capability. "
+        "Analyze the provided medical image and classify risk only. "
+        "Do not diagnose. Do not prescribe treatment. "
+        "Return JSON only, with exactly these keys: risk, confidence, rationale. "
+        "risk must be one of: High-Risk, Low-Risk, insufficient confidence. "
+        "confidence must be a number between 0 and 1. "
+        "The rationale must be brief, safety-focused, and describe key visual findings. "
+        "If the image is not a recognizable medical image, set risk to 'insufficient confidence' and explain why."
+    )
 
     @property
     def allowed_origin_list(self) -> list[str]:

@@ -23,7 +23,7 @@ from app.observability import (
 )
 from app.retriever import RetrievalError
 from app.security import RateLimiter, detect_prompt_injection, get_client_ip
-from app.triage import build_vision_placeholder, classify_text
+from app.triage import classify_text, classify_vision
 
 IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
@@ -80,8 +80,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "detail": retrieval_detail,
                 },
                 "vision_model": {
-                    "status": "placeholder",
-                    "detail": "Image validation is active; model inference is pending.",
+                    "status": text_model_status if settings.vision_enabled else "placeholder",
+                    "detail": (
+                        "MedGemma multimodal model — same instance as text model."
+                        if settings.vision_enabled
+                        else "Vision inference is disabled (vision_enabled=False)."
+                    ),
                 },
                 "observability": {
                     "status": "ok",
@@ -183,16 +187,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         parsed_context = _parse_patient_context(patient_context)
-        has_image = await _validate_image(image, settings)
+        image_bytes = await _validate_image(image, settings)
 
         try:
             with TRIAGE_LATENCY.time():
+                vision_result = await run_in_threadpool(
+                    classify_vision,
+                    image_bytes or b"",
+                    parsed_context,
+                )
                 triage_result = await run_in_threadpool(
                     classify_text,
                     symptoms,
                     parsed_context,
+                    vision_result,
                 )
-                vision_result = build_vision_placeholder(has_image)
         except (LLMError, RetrievalError) as exc:
             raise HTTPException(
                 status_code=503,
@@ -269,9 +278,9 @@ def _parse_patient_context(patient_context: str | None) -> PatientContext | None
         ) from exc
 
 
-async def _validate_image(image: UploadFile | None, settings: Settings) -> bool:
+async def _validate_image(image: UploadFile | None, settings: Settings) -> bytes | None:
     if image is None:
-        return False
+        return None
     if image.content_type not in IMAGE_CONTENT_TYPES:
         raise HTTPException(
             status_code=422,
@@ -283,7 +292,7 @@ async def _validate_image(image: UploadFile | None, settings: Settings) -> bool:
             status_code=422,
             detail="image must be 5 MB or smaller",
         )
-    return True
+    return content
 
 
 app = create_app()
