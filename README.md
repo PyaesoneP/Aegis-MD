@@ -12,11 +12,16 @@
 
 ##  Live Demo
 
-**[Try the live demo →](coming soon)** *(replace with your Cloud Run URL)*
+**[Try the live demo →](https://pyaesonep.github.io/Aegis-MD/)**
 
-Upload a symptom description (and optionally a skin-lesion image) to receive an informational triage urgency suggestion with explainable sources and confidence indicators.
+Upload a symptom description (and optionally a skin-lesion image) to receive an informational triage urgency suggestion with explainable sources and confidence indicators. The backend runs on Cloud Run (CPU-only by default); cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
 
-![Demo Screenshot](coming soon)
+> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. With an L4 GPU the same pipeline completes in ~46s, and with a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
+
+To debug connectivity issues, open the browser DevTools console and run:
+```js
+import('/assets/index.js').then(m => m.diagnose().then(console.log))
+```
 
 ---
 
@@ -51,7 +56,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs**
 - Classifies urgency into 4 tiers: `Emergency`, `Urgent`, `Routine`, `Self-Care`
 - Returns structured rationale, source citations, and a mandatory medical disclaimer
-- **p95 latency target:** < 3,000 ms on Cloud Run (2 vCPU, 4 GB RAM)
+- **Latency:** ~2-3 min cold start, ~25-30s warm on 4 vCPU (CPU-only); ~46s warm on L4 GPU. The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference and would be significantly faster on provisioned hardware.
 
 ###  Vision Risk Stratification
 - Optional image upload (JPEG/PNG, max 5 MB)
@@ -59,8 +64,8 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - Classifies risk into three tiers: `High-Risk`, `Low-Risk`, `insufficient confidence`
 - Confidence scored as a float (0.0–1.0) with structured rationale
 - Vision findings are passed into the text triage LLM prompt, enabling the urgency classification to incorporate visual evidence
-- Configurable via `AEGIS_VISION_ENABLED` (default: `true`); graceful fallback when disabled
-- **p95 latency target:** < 2,000 ms
+- Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled
+- **Latency:** ~60s warm on GPU (two LLM calls); not recommended on CPU-only
 
 ###  Security Gateway
 - **Defense-in-depth** pipeline intercepts all inputs **before** they reach the LLM
@@ -92,7 +97,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | Layer | Technology |
 |---|---|
 | **Backend** | Python 3.12, FastAPI, Uvicorn |
-| **LLM** | MedGemma / MedGemma-1.5 (4B) via Ollama (configurable via `Aegis_LLM_MODEL`) |
+| **LLM** | MedGemma-1.5 (4B, Q4_K_XL quantized, 3.4 GB) via Ollama (configurable via `Aegis_LLM_MODEL`) |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (in-memory, baked into container) |
 | **Vision** | Ollama multimodal (same model as LLM), base64 image encoding |
@@ -114,8 +119,8 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/pyaesonep/aegis-md.git
-cd aegis-md
+git clone https://github.com/PyaesoneP/Aegis-MD.git
+cd Aegis-MD
 ```
 
 ### 2. Set up the Python environment
@@ -133,18 +138,18 @@ If you plan to run RAG and vision locally with Ollama:
 ```bash
 # Install and run Ollama (see https://ollama.com/docs)
 # Pull the multimodal model (model ref must match Aegis_LLM_MODEL)
-ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16
+ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL
 
 # Start Ollama daemon (platform-specific)
 ollama serve
 
-# Verify multimodal support
-curl http://localhost:11434/api/show -d '{"name": "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16"}'
+# Verify model is available
+ollama list
 ```
 
 To disable vision while keeping text triage active:
 ```bash
-export AEGIS_VISION_ENABLED=false
+export Aegis_VISION_ENABLED=false
 ```
 
 If you prefer to run a local GGUF model directly with another runtime, place model files under `./models/` and update `Aegis_LLM_MODEL` accordingly.
@@ -171,7 +176,7 @@ Backend environment variables:
 | `Aegis_RATE_LIMIT_HEALTH_REQUESTS` | `60` | Rate limit for `/health` endpoint |
 | `Aegis_RATE_LIMIT_METRICS_REQUESTS` | `60` | Rate limit for `/metrics` endpoint |
 | `Aegis_RATE_LIMIT_DASHBOARD_REQUESTS` | `30` | Rate limit for `/dashboard` endpoint |
-| `Aegis_CORS_ALLOW_HEADERS` | `content-type,accept` | Allowed CORS request headers |
+| `Aegis_CORS_ALLOW_HEADERS` | `content-type,accept,authorization,x-requested-with` | Allowed CORS request headers |
 | `Aegis_ENABLE_HSTS` | `false` | Enable Strict-Transport-Security header |
 | `Aegis_MAX_BODY_BYTES` | `10485760` | Maximum request body size (10 MB) |
 | `Aegis_MAX_JSON_DEPTH` | `5` | Max nesting depth for patient_context JSON |
@@ -179,11 +184,11 @@ Backend environment variables:
 | `Aegis_MAX_IMAGE_MEGAPIXELS` | `100` | Max image resolution (decompression-bomb guard) |
 | `Aegis_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `5` | Consecutive downstream failures to open circuit |
 | `Aegis_CIRCUIT_BREAKER_RECOVERY_SECONDS` | `30.0` | Cooldown before half-open probe |
-| `Aegis_LLM_MODEL` | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:BF16` | Ollama model reference used for RAG triage |
+| `Aegis_LLM_MODEL` | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL` | Ollama model reference (Q4 quantized, 3.4 GB) |
 | `Aegis_CHROMA_PATH` | `data/chroma/chroma_db` | Filesystem path for ChromaDB persistence |
 | `Aegis_CHROMA_COLLECTION` | `guidelines` | Chroma collection name for guideline chunks |
 | `Aegis_RETRIEVAL_TOP_K` | `3` | Number of guideline chunks to retrieve per query |
-| `AEGIS_VISION_ENABLED` | `true` | Enable/disable multimodal vision inference |
+| `Aegis_VISION_ENABLED` | `true` | Enable/disable multimodal vision inference |
 | `Aegis_MAX_RATIONALE_CHARS` | `4000` | Max characters for triage rationale output |
 | `Aegis_MAX_DISCLAIMER_CHARS` | `500` | Max characters for medical disclaimer output |
 | `Aegis_LOG_MAX_BYTES` | `10485760` | Max bytes per security log file (10 MB) |
@@ -232,39 +237,53 @@ The frontend workflow in `.github/workflows/frontend-pages.yml` builds the React
 2. Add a repository variable named `VITE_API_BASE_URL` with your Cloud Run URL, for example `https://your-cloud-run-url.a.run.app`.
 3. Push to `main` or run **Deploy Frontend to GitHub Pages** manually from the Actions tab.
 
-The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/`.
+The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/` and connects to the Cloud Run backend at the URL set in the `VITE_API_BASE_URL` repository variable. For local production builds, copy `frontend/.env.production.example` to `frontend/.env.production` and set your backend URL there.
 
 ---
 
 ##  Docker Deployment
 
-### Build and run locally
+### Prerequisites for building
+Copy the Ollama model into the build context before running `docker build`:
 ```bash
-docker build -t aegis-md:latest .
-docker run -p 8000:8000 aegis-md:latest
+# Copy the Q4 model from Ollama's system directory
+sudo cp -r /usr/share/ollama/.ollama/models/* ollama_models/
+# Ensure blobs/ and manifests/ are present
+ls ollama_models/
 ```
 
-Cloud Run uses the container `PORT` environment variable automatically; the Docker image starts `uvicorn app.main:app` on that port.
+### Build and run locally
+```bash
+docker build -t asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4 .
+docker run -p 8000:8000 asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4
+```
 
-### Deploy to Google Cloud Run
+Cloud Run uses the container `PORT` environment variable automatically; the Docker image starts `uvicorn app.main:app` on that port via `scripts/entrypoint.sh`.
+
+> **Note:** The image is ~12 GB (includes Ollama + CUDA runtime + Q4 model). CPU-only inference yields ~25-30s warm latency. For lower latency, attach an L4 GPU (`--gpu 1 --gpu-type nvidia-l4`).
+
+### Deploy to Google Cloud Run (CPU-only)
 ```bash
 # Authenticate
 gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
+gcloud config set project aegis-md
 
-# Build and push
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/aegis-md
+# Build, tag, and push
+docker build -t asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4 .
+docker push asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4
 
-# Deploy (min instances = 1 to avoid cold-start during demo week)
-gcloud run deploy aegis-md \
-  --image gcr.io/YOUR_PROJECT_ID/aegis-md \
-  --platform managed \
+# Deploy
+# Omit --gpu and --gpu-type for CPU-only; add them for L4 GPU
+# (Cloud Run GPU requires allowlist — contact GCP support)
+gcloud run deploy backend-489834841444 \
+  --image asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4 \
   --region asia-southeast1 \
   --allow-unauthenticated \
-  --min-instances 1 \
-  --max-instances 5 \
-  --memory 4Gi \
-  --cpu 2
+  --memory 8Gi \
+  --cpu 4 \
+  --timeout 600 \
+  --port 8000 \
+  --set-env-vars "Aegis_ALLOWED_ORIGINS=https://pyaesonep.github.io,Aegis_RETRIEVAL_TOP_K=1"
 ```
 
 ---
@@ -297,7 +316,7 @@ Submit a triage request.
     "confidence": 0.95,
     "rationale": "The image shows a significant open wound on the scalp with visible bleeding and surrounding inflammation. This suggests potential trauma or injury requiring urgent medical attention."
   },
-  "latency_ms": 1240,
+  "latency_ms": 30000,
   "security_passed": true
 }
 ```
