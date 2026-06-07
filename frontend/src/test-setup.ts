@@ -25,3 +25,6 @@ class ResizeObserverMock {
   disconnect() {}
 }
 ;(globalThis as Record<string, unknown>).ResizeObserver = ResizeObserverMock
+
+// Mock Element.scrollIntoView (not available in jsdom)
+Element.prototype.scrollIntoView = () => {}

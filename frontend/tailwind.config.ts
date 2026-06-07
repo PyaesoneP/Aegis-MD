@@ -61,6 +61,11 @@ export default {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-4px)' },
         },
+        'progress-bar': {
+          '0%': { transform: 'scaleX(0)' },
+          '90%': { transform: 'scaleX(0.9)' },
+          '100%': { transform: 'scaleX(1)' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.4s ease-out both',
@@ -68,6 +73,7 @@ export default {
         'shimmer': 'shimmer 2.5s ease-in-out infinite',
         'breath': 'breath 4s ease-in-out infinite',
         'float': 'float 6s ease-in-out infinite',
+        'progress-bar': 'progress-bar 5s ease-out forwards',
       },
       backgroundImage: {
         noise: "url('/noise.svg')",
