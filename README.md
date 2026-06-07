@@ -18,7 +18,7 @@ Upload a symptom description (and optionally a skin-lesion image) to receive an 
 
 ![Aegis-MD Demo](./assets/Aegis-MD.gif)
 
-*The demo above was recorded locally with an L4 GPU — triage completes in ~25s. The live Cloud Run deployment below is CPU-only and takes 2-3 minutes on cold start.*
+*The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~25s. The live Cloud Run deployment below is CPU-only and takes 2-3 minutes on cold start.*
 
 > **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. With an L4 GPU the same pipeline completes in ~46s, and with a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
 
