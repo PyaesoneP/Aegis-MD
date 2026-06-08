@@ -20,9 +20,9 @@ Upload a symptom description (and optionally a skin-lesion image) to receive an 
 
 ![Aegis-MD Demo](./assets/Aegis-MD.gif)
 
-*The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~5s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
+*The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
-> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. Locally on an RTX 5070 Ti Mobile (12 GB VRAM) the pipeline completes in ~5s (text-only) or ~8-10s (with vision running in parallel). With a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
+> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. Locally on an RTX 5070 Ti Mobile (12 GB VRAM) the pipeline completes in ~2–3s (text-only) or ~8-10s (with vision running in parallel). With a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
 
 To debug connectivity issues, open the browser DevTools console and run:
 ```js
@@ -68,7 +68,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **Vitals normality signal**: when all recorded vitals are within normal adult ranges, a strong prompt signal pushes the LLM toward ATS-4 or ATS-5 — counteracting the model's ATS-3 anchoring bias. Suppressed for elderly patients (≥65) with comorbidities to prevent inappropriate down-triage.
 - Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK).
 - Returns structured rationale, source citations, ATS triage card (category + label + time target + colour), and a mandatory medical disclaimer.
-- **Latency:** ~25–30s on CPU (Docker, 4 vCPU); ~5s on RTX 5070 Ti Mobile (12 GB VRAM). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference.
+- **Latency:** ~25–37s on CPU (Docker, 4 vCPU); ~2–3s on RTX 5070 Ti Mobile (12 GB VRAM). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference.
 
 ###  Vision Risk Stratification
 - Optional image upload (JPEG/PNG, max 5 MB)
@@ -548,27 +548,27 @@ The renal colic case (case 8) matched correctly on GPU (ATS-3) but was over-tria
 ### Running the Evaluation
 
 ```bash
-# Build the Docker image
+# GPU (local Ollama + FastAPI)
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+python scripts/run_triage_batch.py --url http://localhost:8000
+
+# CPU (Docker)
 docker build -t aegis-md:eval .
-
-# Start the container
 docker run -d --rm -p 8000:8000 --name aegis-eval aegis-md:eval
-
-# Wait ~30s for Ollama warmup, then run the batch evaluation
+# Wait ~30s for Ollama warmup, then:
 python scripts/run_triage_batch.py --url http://localhost:8000 --output-json results.json
 
-# View per-category breakdown
-python scripts/run_triage_batch.py --url http://localhost:8000 --repeat 3 --output-json results.json
+# With repeat runs for consistency measurement
+python scripts/run_triage_batch.py --repeat 3 --output-json results.json
 
-# List individual test cases with curl commands
+# List individual test cases
 python scripts/synthetic_triage_cases.py --table
 python scripts/synthetic_triage_cases.py --curl
 
 # Clean up
 docker stop aegis-eval
 ```
-
-Results are saved to `logs/docker_eval_results.json`.
 
 ---
 
@@ -610,8 +610,9 @@ These documents are used under their respective public-domain / non-commercial e
 - [x] MVP: Vision risk stratification (skin lesion)
 - [x] MVP: Prompt-injection security gateway
 - [x] MVP: Prometheus monitoring + dashboard
-- [ ] Post-MVP: Adversarial image detection (FGSM demo + rejection)
 - [x] Post-MVP: Scored heuristics security gateway (16+ patterns, Unicode defense, burst rate limiting, circuit breaker, security headers)
+- [x] Post-MVP: Comprehensive evaluation suite (332 backend tests, 94% coverage; 56 frontend tests; Docker + GPU evaluation at 94.1% accuracy)
+- [ ] Post-MVP: Adversarial image detection (FGSM demo + rejection)
 - [ ] Post-MVP: ML-based intent classification guard (further upgrade from scored regex heuristics)
 - [ ] Post-MVP: Edge deployment (ONNX Runtime + Raspberry Pi)
 - [ ] Post-MVP: Multilingual support (Burmese / Chinese)
