@@ -1,11 +1,18 @@
 import base64
+import concurrent.futures
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, get_args
 
 from app.config import get_settings
 from app.models import Confidence, PatientContext, Urgency, VisionResult
 from app.retriever import RetrievedGuideline, retrieve_relevant_guidelines
+
+# ── Retry / timeout configuration ────────────────────────────────────
+_LLM_TIMEOUT_SECONDS = 120       # per-call timeout for Ollama chat
+_LLM_MAX_RETRIES = 2             # retry count (total attempts = 1 + retries)
+_LLM_RETRY_BACKOFF = 1.5         # multiplier for exponential backoff
 
 
 class LLMError(RuntimeError):
@@ -29,8 +36,23 @@ urgency, rationale, confidence.
 urgency must be one of: Emergency, Urgent, Routine, Self-Care.
 confidence must be one of: low, medium, high.
 The rationale must be brief, safety-focused, and cite guideline chunks using [1], [2], etc.
-When image analysis findings are present, reference them directly without reinterpreting or
-inventing visual details not stated in the findings.  Do not describe the image yourself.
+
+CRITICAL — anti-hallucination rules:
+- Only cite a guideline chunk if it directly addresses a symptom the patient
+  actually reported.  Do NOT apply a guideline about condition X just because
+  the chunk was retrieved — the chunk may be irrelevant.
+- Never introduce symptoms, conditions, or findings that the patient has not
+  explicitly stated.  If the patient says "head injury", do not mention rashes,
+  fevers, or other unstated symptoms even if they appear in a retrieved chunk.
+- If no retrieved guideline is directly relevant, write a concise assessment
+  based on the symptom itself and the rule-based urgency prior.  Explain
+  briefly why the symptom maps to that urgency level (e.g. "leg pain without
+  red-flag features such as loss of pulses or compartment syndrome signs
+  suggests Routine urgency").  Do not simply state that no guidelines matched.
+
+When image analysis findings are present, reference them directly without
+reinterpreting or inventing visual details not stated in the findings.
+Do not describe the image yourself.
 """.strip()
 
 URGENCY_VALUES = set(get_args(Urgency))
@@ -44,10 +66,15 @@ def rag_response(
     vision_findings: str | None = None,
 ) -> RagResponse:
     settings = get_settings()
-    guidelines = retrieve_relevant_guidelines(
-        query=query,
-        top_k=settings.retrieval_top_k,
-    )
+
+    # ── Tier-1 retrieval (may fail gracefully) ───────────────────────
+    try:
+        guidelines = retrieve_relevant_guidelines(
+            query=query,
+            top_k=settings.retrieval_top_k,
+        )
+    except Exception:
+        guidelines = []  # proceed without retrieval context
 
     raw_content = _chat_with_ollama(
         model=settings.llm_model,
@@ -71,7 +98,11 @@ def rag_response(
         urgency=_normalize_urgency(payload.get("urgency")),
         rationale=_require_text(payload.get("rationale"), "rationale"),
         confidence=_normalize_confidence(payload.get("confidence")),
-        sources=[guideline.citation for guideline in guidelines],
+        sources=(
+            [guideline.citation for guideline in guidelines]
+            if guidelines
+            else ["retrieval unavailable — LLM-only assessment"]
+        ),
     )
 
 
@@ -85,16 +116,22 @@ def _build_user_prompt(
 ) -> str:
     patient_context_text = _format_patient_context(patient_context)
     rule_urgency_text = rule_urgency or "No rule-based prior"
-    guideline_text = "\n\n".join(
-        f"[{index}] {guideline.content}\nSource: {guideline.citation}"
-        for index, guideline in enumerate(guidelines, start=1)
-    )
+    guideline_text: str
+    if guidelines:
+        guideline_text = "\n\n".join(
+            f"[{index}] {guideline.content}\nSource: {guideline.citation}"
+            for index, guideline in enumerate(guidelines, start=1)
+        )
+    else:
+        guideline_text = "No relevant guideline chunks were retrieved — assess urgency from symptoms and rule-based prior alone."
 
     prompt = (
         f"Symptoms:\n{query}\n\n"
         f"Patient context:\n{patient_context_text}\n\n"
         f"Rule-based urgency prior:\n{rule_urgency_text}\n\n"
-        f"Retrieved guideline chunks:\n{guideline_text}"
+        f"Retrieved guideline chunks (only cite if directly relevant "
+        f"to the stated symptoms — do not apply unrelated guidelines):\n"
+        f"{guideline_text}"
     )
 
     if vision_findings:
@@ -124,7 +161,7 @@ def _chat_with_ollama(
     images: list[str] | None = None,
 ) -> str:
     try:
-        from ollama import chat
+        from ollama import chat as ollama_chat
     except ImportError as exc:
         raise LLMError("The Ollama Python package is not installed.") from exc
 
@@ -133,15 +170,50 @@ def _chat_with_ollama(
         messages = [dict(m) for m in messages]  # shallow copy
         messages[-1]["images"] = images
 
-    try:
-        response = chat(
+    last_exc: Exception | None = None
+    for attempt in range(_LLM_MAX_RETRIES + 1):
+        try:
+            return _call_ollama_with_timeout(
+                ollama_chat, model, messages, images
+            )
+        except LLMError:
+            raise  # non-transient — propagate immediately
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _LLM_MAX_RETRIES:
+                delay = _LLM_RETRY_BACKOFF ** attempt
+                time.sleep(delay)
+                continue
+
+    raise LLMError(
+        f"Ollama chat request failed after {_LLM_MAX_RETRIES + 1} attempts."
+    ) from last_exc
+
+
+def _call_ollama_with_timeout(
+    ollama_chat,
+    model: str,
+    messages: list[dict[str, str]],
+    images: list[str] | None,
+) -> str:
+    """Execute the blocking ollama.chat() call with a timeout guard."""
+
+    def _do_chat():
+        return ollama_chat(
             model=model,
             messages=messages,
             format="json",
             options={"temperature": 0, "num_predict": 256},
         )
-    except Exception as exc:
-        raise LLMError("Ollama chat request failed.") from exc
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_do_chat)
+        try:
+            response = future.result(timeout=_LLM_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            raise LLMError(
+                f"Ollama chat request timed out after {_LLM_TIMEOUT_SECONDS}s."
+            )
 
     content = _extract_message_content(response)
     if not content:
