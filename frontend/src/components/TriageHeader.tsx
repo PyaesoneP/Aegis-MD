@@ -44,7 +44,7 @@ export function TriageHeader() {
             Aegis-MD
           </p>
           <h1 className="mt-1 text-xl font-bold tracking-tight text-ink font-sans">
-            Multimodal Triage Console
+            ED Triage Console
           </h1>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface px-3 py-1.5 text-xs shadow-sm">
