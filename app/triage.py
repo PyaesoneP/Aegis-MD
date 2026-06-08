@@ -61,12 +61,18 @@ def classify_text(
             parts.append(f"Confidence: {vision_result.confidence:.2f}")
         vision_findings = "\n".join(parts)
 
-    rag_result = rag_response(
-        symptoms,
-        patient_context=patient_context,
-        rule_urgency=rule_urgency,
-        vision_findings=vision_findings,
-    )
+    # ── Tier 1: Full RAG (retrieval + LLM); Tier 2: LLM-only (no retrieval);
+    #     Tier 3: Rule-based fallback (no LLM at all) ─────────────────
+    try:
+        rag_result = rag_response(
+            symptoms,
+            patient_context=patient_context,
+            rule_urgency=rule_urgency,
+            vision_findings=vision_findings,
+        )
+    except LLMError:
+        return _rule_based_result(rule_urgency, patient_context)
+
     urgency = _highest_urgency(rule_urgency, rag_result.urgency)
     rationale = rag_result.rationale
 
@@ -129,3 +135,30 @@ def _select_urgency(text: str) -> Urgency:
 
 def _highest_urgency(first: Urgency, second: Urgency) -> Urgency:
     return first if URGENCY_RANK[first] >= URGENCY_RANK[second] else second
+
+
+def _rule_based_result(
+    rule_urgency: Urgency,
+    patient_context: PatientContext | None = None,
+) -> TriageResult:
+    """Fallback result when LLM is entirely unavailable (Tier 3 degradation).
+
+    Returns a rule-based triage assessment using keyword matching only,
+    with an explicit warning that LLM inference was unavailable.
+    """
+    rationale = (
+        f"Rule-based urgency classification (LLM unavailable): "
+        f"symptoms matched the '{rule_urgency}' keyword tier. "
+        "No guideline citations or AI-generated rationale are available. "
+        "This is a degraded assessment — seek professional medical evaluation."
+    )
+    if patient_context and patient_context.age is not None and patient_context.age >= 65:
+        rationale += " Age over 65 was noted as a factor for lower threshold review."
+
+    return TriageResult(
+        urgency=rule_urgency,
+        rationale=rationale,
+        confidence="low",
+        sources=["rule-based fallback — LLM unavailable"],
+        disclaimer=DISCLAIMER,
+    )

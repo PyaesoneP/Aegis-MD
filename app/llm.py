@@ -1,11 +1,18 @@
 import base64
+import concurrent.futures
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, get_args
 
 from app.config import get_settings
 from app.models import Confidence, PatientContext, Urgency, VisionResult
 from app.retriever import RetrievedGuideline, retrieve_relevant_guidelines
+
+# ── Retry / timeout configuration ────────────────────────────────────
+_LLM_TIMEOUT_SECONDS = 120       # per-call timeout for Ollama chat
+_LLM_MAX_RETRIES = 2             # retry count (total attempts = 1 + retries)
+_LLM_RETRY_BACKOFF = 1.5         # multiplier for exponential backoff
 
 
 class LLMError(RuntimeError):
@@ -44,10 +51,15 @@ def rag_response(
     vision_findings: str | None = None,
 ) -> RagResponse:
     settings = get_settings()
-    guidelines = retrieve_relevant_guidelines(
-        query=query,
-        top_k=settings.retrieval_top_k,
-    )
+
+    # ── Tier-1 retrieval (may fail gracefully) ───────────────────────
+    try:
+        guidelines = retrieve_relevant_guidelines(
+            query=query,
+            top_k=settings.retrieval_top_k,
+        )
+    except Exception:
+        guidelines = []  # proceed without retrieval context
 
     raw_content = _chat_with_ollama(
         model=settings.llm_model,
@@ -71,7 +83,11 @@ def rag_response(
         urgency=_normalize_urgency(payload.get("urgency")),
         rationale=_require_text(payload.get("rationale"), "rationale"),
         confidence=_normalize_confidence(payload.get("confidence")),
-        sources=[guideline.citation for guideline in guidelines],
+        sources=(
+            [guideline.citation for guideline in guidelines]
+            if guidelines
+            else ["retrieval unavailable — LLM-only assessment"]
+        ),
     )
 
 
@@ -85,10 +101,14 @@ def _build_user_prompt(
 ) -> str:
     patient_context_text = _format_patient_context(patient_context)
     rule_urgency_text = rule_urgency or "No rule-based prior"
-    guideline_text = "\n\n".join(
-        f"[{index}] {guideline.content}\nSource: {guideline.citation}"
-        for index, guideline in enumerate(guidelines, start=1)
-    )
+    guideline_text: str
+    if guidelines:
+        guideline_text = "\n\n".join(
+            f"[{index}] {guideline.content}\nSource: {guideline.citation}"
+            for index, guideline in enumerate(guidelines, start=1)
+        )
+    else:
+        guideline_text = "No relevant guideline chunks were retrieved — assess urgency from symptoms and rule-based prior alone."
 
     prompt = (
         f"Symptoms:\n{query}\n\n"
@@ -124,7 +144,7 @@ def _chat_with_ollama(
     images: list[str] | None = None,
 ) -> str:
     try:
-        from ollama import chat
+        from ollama import chat as ollama_chat
     except ImportError as exc:
         raise LLMError("The Ollama Python package is not installed.") from exc
 
@@ -133,15 +153,50 @@ def _chat_with_ollama(
         messages = [dict(m) for m in messages]  # shallow copy
         messages[-1]["images"] = images
 
-    try:
-        response = chat(
+    last_exc: Exception | None = None
+    for attempt in range(_LLM_MAX_RETRIES + 1):
+        try:
+            return _call_ollama_with_timeout(
+                ollama_chat, model, messages, images
+            )
+        except LLMError:
+            raise  # non-transient — propagate immediately
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _LLM_MAX_RETRIES:
+                delay = _LLM_RETRY_BACKOFF ** attempt
+                time.sleep(delay)
+                continue
+
+    raise LLMError(
+        f"Ollama chat request failed after {_LLM_MAX_RETRIES + 1} attempts."
+    ) from last_exc
+
+
+def _call_ollama_with_timeout(
+    ollama_chat,
+    model: str,
+    messages: list[dict[str, str]],
+    images: list[str] | None,
+) -> str:
+    """Execute the blocking ollama.chat() call with a timeout guard."""
+
+    def _do_chat():
+        return ollama_chat(
             model=model,
             messages=messages,
             format="json",
             options={"temperature": 0, "num_predict": 256},
         )
-    except Exception as exc:
-        raise LLMError("Ollama chat request failed.") from exc
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_do_chat)
+        try:
+            response = future.result(timeout=_LLM_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError:
+            raise LLMError(
+                f"Ollama chat request timed out after {_LLM_TIMEOUT_SECONDS}s."
+            )
 
     content = _extract_message_content(response)
     if not content:
