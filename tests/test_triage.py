@@ -3,28 +3,32 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.llm import LLMError, RagResponse
 from app.main import create_app
-from app.models import PatientContext
+from app.models import TriageInput
 from app.triage import classify_text
 
 
-def test_classify_text_uses_rule_urgency_when_higher(monkeypatch):
+def test_classify_text_uses_rule_ats_when_higher(monkeypatch):
     monkeypatch.setattr(
         "app.triage.rag_response",
-        lambda symptoms, patient_context, rule_urgency, vision_findings=None: RagResponse(
-            urgency="Routine",
-            rationale="LLM says routine.",
+        lambda triage_input, rule_ats=None, vision_findings=None: RagResponse(
+            ats_category="ATS-4",
+            rationale="LLM says semi-urgent.",
             confidence="medium",
             sources=["source1"],
         ),
     )
 
-    result = classify_text(
-        "I have chest pain and shortness of breath.",
-        PatientContext(age=40, sex="female"),
+    triage_input = TriageInput(
+        chief_complaint="I have chest pain and shortness of breath.",
+        age=40,
+        sex="female",
+        pain_score=8,
     )
 
-    assert result.urgency == "Emergency"
-    assert "Local triage safeguards raised the final urgency" in result.rationale
+    result = classify_text(triage_input)
+
+    assert result.ats_category == "ATS-2"
+    assert "Local triage safeguards raised the final ATS category" in result.rationale
     assert result.confidence == "medium"
 
 
@@ -36,7 +40,15 @@ def test_triage_endpoint_returns_503_when_llm_dependency_fails(tmp_path, monkeyp
     )
 
     with TestClient(app) as client:
-        response = client.post("/api/v1/triage", data={"symptoms": "I have a mild cough."})
+        response = client.post(
+            "/api/v1/triage",
+            data={
+                "chief_complaint": "I have a mild cough.",
+                "age": "30",
+                "sex": "female",
+                "pain_score": "2",
+            },
+        )
 
     assert response.status_code == 503
     assert "RAG/LLM dependency" in response.json()["detail"]

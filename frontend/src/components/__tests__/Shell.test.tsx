@@ -16,7 +16,8 @@ import { Shell } from '../Shell'
 const mockResponse = {
   request_id: 'req-1',
   triage_result: {
-    urgency: 'Urgent',
+    ats_category: 'ATS-2',
+    ats_card: { category: 'ATS-2', label: 'Emergency', time_target_min: 10, color: '#ea580c' },
     rationale: 'Test rationale',
     confidence: 'high',
     sources: ['source1'],
@@ -37,19 +38,27 @@ describe('Shell component', () => {
 
     render(<Shell />)
 
-    const textarea = screen.getByRole('textbox', { name: /symptoms/i })
+    const textarea = screen.getByRole('textbox', { name: /chief complaint/i })
     await userEvent.type(textarea, 'I have chest pain')
 
-    const ageInput = screen.getByPlaceholderText('e.g. 45') as HTMLInputElement
+    const ageInput = screen.getByPlaceholderText('e.g. 65') as HTMLInputElement
     await userEvent.clear(ageInput)
-    await userEvent.type(ageInput, '45')
+    await userEvent.type(ageInput, '65')
+
+    // Select sex (male button)
+    const maleBtn = screen.getByRole('button', { name: /^Male$/i })
+    await userEvent.click(maleBtn)
+
+    // Select pain score
+    const painBtn = screen.getByRole('button', { name: /^7$/ })
+    await userEvent.click(painBtn)
 
     const submit = screen.getByRole('button', { name: /submit triage/i })
     await userEvent.click(submit)
 
     // wait for response to be rendered
     await waitFor(() => {
-      expect(screen.getByText(/Urgency/i)).toBeTruthy()
+      expect(screen.getByText(/ATS Category/i)).toBeTruthy()
       expect(screen.getByText(/Test rationale/)).toBeTruthy()
     })
 
