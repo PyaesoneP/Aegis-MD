@@ -36,8 +36,23 @@ urgency, rationale, confidence.
 urgency must be one of: Emergency, Urgent, Routine, Self-Care.
 confidence must be one of: low, medium, high.
 The rationale must be brief, safety-focused, and cite guideline chunks using [1], [2], etc.
-When image analysis findings are present, reference them directly without reinterpreting or
-inventing visual details not stated in the findings.  Do not describe the image yourself.
+
+CRITICAL — anti-hallucination rules:
+- Only cite a guideline chunk if it directly addresses a symptom the patient
+  actually reported.  Do NOT apply a guideline about condition X just because
+  the chunk was retrieved — the chunk may be irrelevant.
+- Never introduce symptoms, conditions, or findings that the patient has not
+  explicitly stated.  If the patient says "head injury", do not mention rashes,
+  fevers, or other unstated symptoms even if they appear in a retrieved chunk.
+- If no retrieved guideline is directly relevant, write a concise assessment
+  based on the symptom itself and the rule-based urgency prior.  Explain
+  briefly why the symptom maps to that urgency level (e.g. "leg pain without
+  red-flag features such as loss of pulses or compartment syndrome signs
+  suggests Routine urgency").  Do not simply state that no guidelines matched.
+
+When image analysis findings are present, reference them directly without
+reinterpreting or inventing visual details not stated in the findings.
+Do not describe the image yourself.
 """.strip()
 
 URGENCY_VALUES = set(get_args(Urgency))
@@ -114,7 +129,9 @@ def _build_user_prompt(
         f"Symptoms:\n{query}\n\n"
         f"Patient context:\n{patient_context_text}\n\n"
         f"Rule-based urgency prior:\n{rule_urgency_text}\n\n"
-        f"Retrieved guideline chunks:\n{guideline_text}"
+        f"Retrieved guideline chunks (only cite if directly relevant "
+        f"to the stated symptoms — do not apply unrelated guidelines):\n"
+        f"{guideline_text}"
     )
 
     if vision_findings:
