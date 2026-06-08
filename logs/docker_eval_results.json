@@ -1,0 +1,243 @@
+{
+  "base_url": "http://localhost:8000",
+  "timeout_s": 300,
+  "repeats": 1,
+  "total_cases": 17,
+  "runs": [
+    {
+      "run_index": 0,
+      "passed": 15,
+      "failed": 2,
+      "total": 17,
+      "avg_latency_s": 36.8,
+      "by_ats": {
+        "ATS-1": {
+          "total": 2,
+          "passed": 2
+        },
+        "ATS-2": {
+          "total": 5,
+          "passed": 5
+        },
+        "ATS-3": {
+          "total": 4,
+          "passed": 2
+        },
+        "ATS-4": {
+          "total": 3,
+          "passed": 3
+        },
+        "ATS-5": {
+          "total": 3,
+          "passed": 3
+        }
+      },
+      "case_results": [
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-1",
+          "ats_label": "Resuscitation",
+          "confidence": "high",
+          "latency_s": 27.2,
+          "sources": 3,
+          "case_name": "ats1_cardiac_arrest",
+          "expected_ats": "ATS-1",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-1",
+          "ats_label": "Resuscitation",
+          "confidence": "high",
+          "latency_s": 27.2,
+          "sources": 3,
+          "case_name": "ats1_anaphylactic_shock",
+          "expected_ats": "ATS-1",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "high",
+          "latency_s": 24.3,
+          "sources": 3,
+          "case_name": "ats2_acs_typical",
+          "expected_ats": "ATS-2",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "high",
+          "latency_s": 31.8,
+          "sources": 3,
+          "case_name": "ats2_stroke_symptoms",
+          "expected_ats": "ATS-2",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "high",
+          "latency_s": 23.6,
+          "sources": 3,
+          "case_name": "ats2_severe_asthma",
+          "expected_ats": "ATS-2",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "high",
+          "latency_s": 31.3,
+          "sources": 3,
+          "case_name": "ats2_pregnant_abdominal_pain",
+          "expected_ats": "ATS-2",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-3",
+          "ats_label": "Urgent",
+          "confidence": "low",
+          "latency_s": 42.0,
+          "sources": 1,
+          "case_name": "ats3_febrile_elderly",
+          "expected_ats": "ATS-3",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "high",
+          "latency_s": 36.1,
+          "sources": 3,
+          "case_name": "ats3_renal_colic",
+          "expected_ats": "ATS-3",
+          "ats_match": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-4",
+          "ats_label": "Semi-urgent",
+          "confidence": "low",
+          "latency_s": 40.4,
+          "sources": 1,
+          "case_name": "ats3_head_injury_anticoagulated",
+          "expected_ats": "ATS-3",
+          "ats_match": false
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-4",
+          "ats_label": "Semi-urgent",
+          "confidence": "high",
+          "latency_s": 30.6,
+          "sources": 3,
+          "case_name": "ats4_ankle_sprain",
+          "expected_ats": "ATS-4",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-4",
+          "ats_label": "Semi-urgent",
+          "confidence": "high",
+          "latency_s": 32.1,
+          "sources": 3,
+          "case_name": "ats4_uti_symptoms",
+          "expected_ats": "ATS-4",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-4",
+          "ats_label": "Semi-urgent",
+          "confidence": "high",
+          "latency_s": 33.6,
+          "sources": 3,
+          "case_name": "ats4_small_laceration",
+          "expected_ats": "ATS-4",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-5",
+          "ats_label": "Non-urgent",
+          "confidence": "low",
+          "latency_s": 42.2,
+          "sources": 1,
+          "case_name": "ats5_suture_removal",
+          "expected_ats": "ATS-5",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-5",
+          "ats_label": "Non-urgent",
+          "confidence": "high",
+          "latency_s": 32.9,
+          "sources": 3,
+          "case_name": "ats5_minor_rash",
+          "expected_ats": "ATS-5",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-5",
+          "ats_label": "Non-urgent",
+          "confidence": "high",
+          "latency_s": 34.0,
+          "sources": 3,
+          "case_name": "ats5_medical_certificate",
+          "expected_ats": "ATS-5",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-2",
+          "ats_label": "Emergency",
+          "confidence": "low",
+          "latency_s": 22.9,
+          "sources": 3,
+          "case_name": "ats2_mva_major_trauma",
+          "expected_ats": "ATS-2",
+          "ats_match": true
+        },
+        {
+          "ok": true,
+          "status": 200,
+          "ats_category": "ATS-3",
+          "ats_label": "Urgent",
+          "confidence": "high",
+          "latency_s": 40.4,
+          "sources": 3,
+          "case_name": "ats3_fall_elderly",
+          "expected_ats": "ATS-3",
+          "ats_match": true
+        }
+      ]
+    }
+  ]
+}

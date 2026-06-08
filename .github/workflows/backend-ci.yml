@@ -8,6 +8,7 @@ on:
     paths:
       - "app/**"
       - "tests/**"
+      - "scripts/**"
       - "requirements.txt"
       - "pytest.ini"
       - "main.py"
@@ -18,6 +19,7 @@ on:
     paths:
       - "app/**"
       - "tests/**"
+      - "scripts/**"
       - "requirements.txt"
       - "pytest.ini"
       - "main.py"
@@ -27,14 +29,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        run: ruff check app/ tests/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -42,5 +59,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: pytest tests/ -v --cov=app --cov-report=term-missing
+      - name: Run tests with coverage
+        run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-fail-under=70 --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: test-results.xml
+
+  # Docker build verification is skipped in CI because the image requires
+  # pre-downloaded Ollama model files (~3.4 GB) that are gitignored.
+  # To verify the Docker build locally:
+  #   1. Copy model files: cp -r ~/.ollama/models/* ollama_models/
+  #   2. Copy Chroma cache: mkdir -p .cache/chroma && cp -r ~/.cache/chroma/* .cache/chroma/
+  #   3. Run: docker build .

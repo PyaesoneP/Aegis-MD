@@ -32,7 +32,6 @@ from app.observability import (
     log_request_audit,
     log_security_event,
     metrics_payload,
-    record_blocked_event,
 )
 from app.retriever import RetrievalError
 from app.security import (
