@@ -14,13 +14,52 @@
 
 ---
 
+## Contents
+
+- [Live Demo](#-live-demo)
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Key Features](#-key-features)
+  - [ED Triage (RAG + SLM)](#-ed-triage-rag--slm)
+  - [Vision Risk Stratification](#-vision-risk-stratification)
+  - [Security Gateway](#-security-gateway)
+  - [Monitoring Dashboard](#-monitoring-dashboard)
+- [Tech Stack](#-tech-stack)
+- [Quick Start](#-quick-start)
+- [Test Suite](#-test-suite)
+  - [Backend Tests](#-backend-tests-tests)
+  - [Frontend Tests](#-frontend-tests-frontendsrc)
+  - [Evaluation Framework](#-evaluation-framework-scripts--testseval)
+- [CI/CD](#-cicd)
+- [Docker Deployment](#-docker-deployment)
+- [API Reference](#-api-reference)
+- [Evaluation](#-evaluation)
+- [Safety, Ethics & Limitations](#-safety-ethics--limitations)
+- [Guideline Sources](#-guideline-sources)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Author](#-author)
+
+---
+
 ##  Live Demo
 
 **[Try the live demo →](https://pyaesonep.github.io/Aegis-MD/)**
 
 A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom description to receive an informational triage urgency suggestion. **This is a demo — the intended architecture runs entirely on local hardware with zero data leaving the machine.** Cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
 
-![Aegis-MD Demo](./assets/Aegis-MD.gif)
+![Aegis-MD Demo — ATS-1 cardiac arrest triage](./assets/aegis-MD_ats_1.gif)
+
+*ATS-1 (Resuscitation): cardiac arrest detected correctly, triage card returned with immediate time target — GPU inference in ~2s.*
+
+![Aegis-MD Demo — ATS-3 febrile elderly triage](./assets/aegis-MD_ats_3.gif)
+
+*ATS-3 (Urgent): febrile elderly patient with comorbidities correctly classified, RAG citations and structured rationale returned.*
+
+![Aegis-MD Demo — vision risk stratification](./assets/aegis-MD_vision.gif)
+
+*Vision: skin lesion image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
@@ -40,10 +79,12 @@ Aegis-MD is an **ED Triage Console** — a multimodal clinical triage agent desi
 - **Structured ED triage intake** capturing what a triage nurse collects in 2–5 minutes: chief complaint (150 char), vital signs (HR, RR, SpO₂, Temp, BP), pain score (0–10), onset, arrival mode, consciousness (AVPU), mechanism, and risk modifiers (comorbidities, pregnancy, allergies). Optional image upload for wounds/rashes.
 - **ATS 1–5 classification** using the Australasian Triage Scale, with time-to-treatment targets (ATS-1 = immediate, ATS-2 = 10 min, ATS-3 = 30 min, ATS-4 = 60 min, ATS-5 = 120 min) and colour-coded triage cards.
 - **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK). The current corpus is limited to 5 documents — a production system would index orders of magnitude more sources across specialties.
-- **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 4B by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL`.
-- **Computer Vision** risk stratification using the same Ollama-hosted multimodal model, running in parallel with text triage; urgency levels are merged programmatically and findings are appended verbatim — zero hallucination risk from cross-model contamination
-- **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
+- **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 4B by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL`. Per its [official model card](https://huggingface.co/google/medgemma-1.5-4b-it), MedGemma "is not intended to be used without appropriate validation, adaptation, and/or making meaningful modification" — it's a research starting point, not a clinical tool. The model achieves 69.1% on MedQA and was trained on chest X-rays, dermatology, histopathology, ophthalmology, CT, MRI, and medical text — notably, it was **not** evaluated on ED triage tasks.
+- **Computer Vision** risk stratification using the same Ollama-hosted multimodal model, running in parallel with text triage; urgency levels are merged programmatically and findings are appended verbatim — eliminates cross-model contamination risk (the text LLM never sees vision output, and vice versa). **Note: vision accuracy is unevaluated** — no quantitative results are available for image-based risk stratification.
+- **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging — a demonstration of defense-in-depth techniques rather than a load-bearing production control
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
+
+**Architecture: rules with LLM assist.** The triage system is best understood as a rule-based safety floor augmented by LLM reasoning — not the reverse. Keyword-based ATS discriminators, vitals normality signals, and age/comorbidity suppression rules provide an auditable safety baseline; the LLM contributes escalation judgment and structured rationale generation. This is a deliberate safety choice: rules are auditable and deterministic; a 4B quantized model's reasoning is not.
 
 **Privacy-first by design — local inference only.** All inference runs on-device via Ollama. The LLM and vision model execute locally with no data ever leaving the machine. No patient symptoms, images, or triage results are sent to external APIs, stored beyond the request lifecycle, or used for training. This is a deliberate architectural choice: medical triage data is sensitive by nature, and local inference eliminates the trust, compliance, and latency burdens of cloud-hosted models. **The Cloud Run demo is a convenience for portfolio review — the system is meant to run on your own hardware.**
 
@@ -52,6 +93,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - LLM security hardening (prompt injection defense)
 - End-to-end MLOps (Docker, CI/CD, Cloud Run, monitoring)
 - Multimodal system design (text + vision fusion)
+- Rules-first safety architecture for clinical AI
 
 ---
 
@@ -68,7 +110,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **ATS 1–5 classification** using the Australasian Triage Scale with time-to-treatment targets. The LLM prompt includes ATS definitions, vitals thresholds for escalation (HR > 120, SpO₂ < 92%, systolic < 90 mmHg, etc.), and risk-modifier escalation rules (age > 65, pregnancy, anticoagulants).
 - **Three-tier fallback**: Tier 1 — full RAG (retrieval + LLM); Tier 2 — LLM-only (when retrieval unavailable); Tier 3 — rule-based keyword matching (when LLM is down). The rule layer uses ATS-1, ATS-2, ATS-4, and ATS-5 keyword discriminators with ATS-3 as the default for undifferentiated presentations.
 - **Vitals normality signal**: when all recorded vitals are within normal adult ranges, a strong prompt signal pushes the LLM toward ATS-4 or ATS-5 — counteracting the model's ATS-3 anchoring bias. Suppressed for elderly patients (≥65) with comorbidities to prevent inappropriate down-triage.
-- Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK).
+- Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK). Note: the corpus is mostly disease-specific (pediatric, hypertension, diabetes, asthma) rather than triage-specific; retrieval relevance is unmeasured — citations are provided for explainability but whether retrieved chunks actually support the ATS decision has not been evaluated. On Cloud Run, top_k is reduced to 1 to conserve memory.
 - Returns structured rationale, source citations, ATS triage card (category + label + time target + colour), and a mandatory medical disclaimer.
 - **Latency:** ~25–37s on CPU (Docker, 4 vCPU); ~2–3s on RTX 5070 Ti Mobile (12 GB VRAM). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference.
 
@@ -77,11 +119,19 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **MedGemma multimodal model** (same Ollama instance as text triage) for image analysis
 - Classifies risk into three tiers: `High-Risk`, `Low-Risk`, `insufficient confidence`
 - Confidence scored as a float (0.0–1.0) with structured rationale
-- Vision and text triage run **in parallel** via `asyncio.gather`; urgency levels are merged programmatically and findings are structured into labelled sections with no LLM rewriting — zero hallucination risk from cross-model contamination
+- Vision and text triage run **in parallel** via `asyncio.gather`; urgency levels are merged programmatically and findings are structured into labelled sections with no LLM rewriting — eliminates cross-model contamination risk (the text LLM never sees vision output)
 - Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled (text triage still returns independently)
 - **Latency:** ~8-10s on RTX 5070 Ti Mobile (parallel vision + text); ~50-60s on Cloud Run CPU-only
+- **⚠️ Unevaluated:** Vision risk stratification has no quantitative accuracy results. A 4B quantized multimodal model classifying wounds and rashes as High/Low-Risk is unlikely to be clinically meaningful without validation. This component is experimental — treat findings as illustrative only.
+
+![Vision risk stratification](./assets/aegis-MD_vision.gif)
+
+*Vision risk stratification: a head injury image is uploaded alongside text triage data. The vision model returns a risk tier and confidence score in parallel; results are merged programmatically with text triage output.*
 
 ###  Security Gateway
+
+*A demonstration of injection-defense techniques — not a load-bearing production control. Regex blocklists are bypassable by construction; this is a showcase of defense-in-depth patterns.*
+
 - **Defense-in-depth** pipeline intercepts all inputs **before** they reach the LLM
 - **Scored heuristics** (PASS / WARN / BLOCK): borderline cases are logged for observability without blocking legitimate use; severe attacks return 400
 - **16+ injection patterns** across 7 attack families: instruction override, DAN/jailbreak, prompt extraction, encoding evasion, delimiter attacks, role-play override, recursive/nesting attacks
@@ -94,6 +144,14 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `X-Permitted-Cross-Domain-Policies`, configurable HSTS
 - **Output safety**: response fields truncated to configurable max lengths to prevent unbounded LLM output
 - Security events logged with rotation (JSONL) + Prometheus counters `aegis_security_blocked_total` and `aegis_security_warned_total`
+
+![Prompt injection blocked — DAN/jailbreak attack returns 400](./assets/aegis-MD_attack_1.gif)
+
+*Prompt injection blocked: a classic DAN/jailbreak attack hits the scored-heuristics gateway and returns HTTP 400 before reaching the LLM.*
+
+![Unicode defense — homoglyph evasion neutralized](./assets/aegis-MD_attack_2.gif)
+
+*Unicode defense: Cyrillic and Fullwidth homoglyph substitutions designed to evade naive regex are remapped to ASCII by NFKC normalization, then caught by the same patterns.*
 
 ###  Monitoring Dashboard
 - `/metrics` endpoint exposes Prometheus histograms and counters for latency, throughput, block/warn rates, circuit breaker state, and urgency distribution
@@ -268,7 +326,9 @@ The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/` 
 
 ##  Test Suite
 
-The project has a comprehensive layered test suite: **332 backend tests** (94% coverage) and **56 frontend tests** across 11 component files.
+The project has a comprehensive layered test suite: **332 backend tests** (94% line coverage) and **56 frontend tests** across 11 component files.
+
+> **What these numbers mean — and what they don't.** Line coverage measures which lines executed, not which failure modes were probed. These tests validate plumbing correctness (parsing, regex, config, formatters, API contracts) — they do not measure clinical safety or under-triage escape rate, which requires live model evaluation. For a safety system, the relevant question is "how many dangerous inputs does the keyword layer miss," and 332 plumbing tests don't answer it. See the [Evaluation](#-evaluation) section below for live model results.
 
 ### Backend Tests (`tests/`)
 
@@ -324,11 +384,18 @@ npx vitest --run
 
 ### Evaluation Framework (`scripts/` + `tests/eval/`)
 
-The evaluation framework uses 17 synthetic ED triage cases (`scripts/synthetic_triage_cases.py`) covering all ATS categories as ground truth:
+The evaluation framework has two distinct layers — only one measures model accuracy:
 
-- **`tests/eval/test_triage_accuracy.py`** — 30 parametrized tests: runs each case through `classify_text` with mocked LLM responses, verifying ATS agreement and that the safety escalation layer prevents under-triage
+| Layer | What it tests | LLM | What it measures |
+|---|---|---|---|
+| **Unit eval** (`tests/eval/`) | 30 parametrized + 13 safety tests | **Mocked** | Plumbing correctness: safety escalation logic, degradation paths, injection blocking — validates the code around the model, not the model |
+| **Live eval** (`scripts/run_triage_batch.py`) | 17 hand-written cases against running container | **Real** (MedGemma 4B Q4) | End-to-end ATS agreement between the live model and expected labels |
+
+The unit eval runs in CI on every push. The live eval requires a running Ollama instance and is run manually.
+
+- **`tests/eval/test_triage_accuracy.py`** — 30 parametrized tests: runs each case through `classify_text` with **mocked** LLM responses, verifying ATS agreement and that the safety escalation layer prevents under-triage
 - **`tests/eval/test_safety_evaluation.py`** — 13 tests: Tier 3 degradation, non-medical input, hallucination resistance, injection blocking at security layer
-- **`scripts/run_triage_batch.py`** — CLI runner for live evaluation against a running container:
+- **`scripts/run_triage_batch.py`** — CLI runner for live evaluation against a running container (real model):
   ```bash
   # Single run
   python scripts/run_triage_batch.py --url http://localhost:8000
@@ -533,19 +600,21 @@ Lightweight HTML monitoring dashboard.
 
 ##  Evaluation
 
-The triage system was evaluated against 17 synthetic ED cases spanning all five ATS categories — from cardiac arrest (ATS-1) to medical certificate requests (ATS-5). Each case includes chief complaint, vitals, age, sex, pain score, and contextual fields (onset, arrival mode, consciousness, mechanism, comorbidities, pregnancy). Tests were run on two hardware configurations:
+> **Caveat: this is a developer smoke test, not a clinical validation.** n=17 is too small to report percentages with precision — each case represents ~5.9 percentage points, and the 95% confidence interval on 16/17 runs roughly from the low 70s to ~99%. The cases are textbook, clean presentations written by the same person who designed the prompts; there is no held-out or blind set, no external rater, and no inter-rater check against how an actual triage nurse would score the same vignettes. Treat these numbers as **existence proofs that the system can handle clean cases**, not as accuracy benchmarks. Expansion to 500 cases with held-out subsets is on the roadmap.
 
-| Platform | Hardware | Accuracy | Avg Latency | Warm Latency |
-|----------|----------|----------|-------------|--------------|
-| **GPU** | RTX 5070 Ti Mobile (12 GB VRAM) | **16/17 (94.1%)** | 3.2s | 2.1–2.5s |
-| **CPU** | 4 vCPU (Docker) | 15/17 (88.2%) | 36.8s | 24–42s |
+The triage system was tested against 17 hand-written ED cases spanning all five ATS categories — from cardiac arrest (ATS-1) to medical certificate requests (ATS-5). Each case includes chief complaint, vitals, age, sex, pain score, and contextual fields (onset, arrival mode, consciousness, mechanism, comorbidities, pregnancy). Tests were run on two hardware configurations:
 
-> **Note:** The renal colic case (ATS-3) matched on GPU but not on CPU — the same MedGemma 4B Q4 model produced different triage results across hardware, likely due to floating-point precision differences in quantized inference. This is a known characteristic of quantized LLMs.
+| Platform | Hardware | Passed | Avg Latency | Warm Latency |
+|----------|----------|--------|-------------|--------------|
+| **GPU** | RTX 5070 Ti Mobile (12 GB VRAM) | **16 / 17** | 3.2s | 2.1–2.5s |
+| **CPU** | 4 vCPU (Docker) | 15 / 17 | 36.8s | 24–42s |
+
+> **🔬 Hardware nondeterminism — the most interesting finding:** The renal colic case (ATS-3) passed on GPU but failed on CPU — the *same* MedGemma 4B Q4 model produced different ATS outputs across hardware, likely due to floating-point precision differences in quantized inference. This is not a bug; it's a property of quantized LLM inference that most practitioners never encounter or never notice. The fact that it flipped a safety-relevant output makes this a genuinely important observation for anyone deploying quantized models in clinical contexts.
 
 ### Results Summary (GPU)
 
 ```
-Results: 16 passed, 1 failed, 17 total  (94.1%)
+Results: 16 passed, 1 failed, 17 total
 Average latency: 3.2s (GPU, RTX 5070 Ti Mobile)
 ```
 
@@ -587,16 +656,16 @@ One case consistently fails across both CPU and GPU:
 
 | Case | Expected | Got | Direction | Root Cause |
 |------|----------|-----|-----------|------------|
-| Head injury + warfarin (case 9) | ATS-3 | ATS-4 | **Unsafe** (under-triage) | "laceration" keyword in ATS-4 list matches. The rule layer only inspects chief complaint text — it doesn't incorporate structured fields (age 80, anticoagulants, head injury mechanism). The anticoagulant escalation note was appended to the rationale but did not elevate the category. **Fix pending:** wire structured risk modifiers into the rule-based tier |
+| Head injury + warfarin (case 9) | ATS-3 | ATS-4 | **Unsafe** (under-triage) | "laceration" keyword in ATS-4 list matched the chief complaint text. The rule layer only inspects free-text chief complaint — it ignores structured fields (age 80, anticoagulants, head injury mechanism). This is not an isolated edge case; it's a **class of failure** from keyword matching on free text, and the same mechanism likely mis-handles other inputs the 17-case set doesn't cover. The lesson is not "one bug remains" — it's that the safety floor is built on a brittle primitive, and the test set is too small to reveal how leaky it is. Fixing this requires wiring structured risk modifiers into the rule-based tier. |
 
 The renal colic case (case 8) matched correctly on GPU (ATS-3) but was over-triaged on CPU (ATS-2). This is attributable to floating-point precision differences in Q4 quantized inference rather than a systemic triage logic issue.
 
 ### Key Design Decisions
 
-- **Over-triage is safe; under-triage is dangerous.** The single remaining failure is an under-triage of an 80-year-old anticoagulated patient with head injury — this is the highest-priority fix.
-- **Rule layer guards the LLM.** Keyword-based ATS-1, ATS-2, ATS-4, and ATS-5 discriminators provide a safety floor. The LLM can escalate but cannot override a definitive ATS-5 keyword match.
-- **Vitals normality signal** successfully broke the LLM's ATS-3 anchoring bias for low-acuity cases. All 6 ATS-4 and ATS-5 cases were correctly classified.
-- **GPU vs CPU divergence observed.** The same Q4-quantized model produced different triage outputs on GPU vs CPU for the renal colic case — a known characteristic of quantized LLM inference that warrants consistency testing across hardware targets.
+- **Over-triage is safe; under-triage is dangerous.** The single remaining failure is an under-triage of an 80-year-old anticoagulated patient with head injury — and it reveals a class of vulnerabilities in keyword-based safety floors, not an isolated bug.
+- **Rule layer guards the LLM.** Keyword-based ATS-1, ATS-2, ATS-4, and ATS-5 discriminators provide a safety floor. The LLM can escalate but cannot override a definitive ATS-5 keyword match. In practice, more and more accuracy comes from hand-tuned rules wrapped around the model, not from the model reasoning about acuity. This is arguably the right architecture for safety — rules are auditable and deterministic; a 4B model's reasoning is not.
+- **Vitals normality signal** successfully broke the LLM's ATS-3 anchoring bias for low-acuity cases. All 6 ATS-4 and ATS-5 cases were correctly classified. Combined with the ≥65-with-comorbidity suppression rule, these hand-tuned signals carry significant weight — the system is best described as **rules with LLM assist**, not LLM triage.
+- **GPU vs CPU divergence observed.** The same Q4-quantized model produced different triage outputs on GPU vs CPU for the renal colic case — a known characteristic of quantized LLM inference that warrants consistency testing across hardware targets. This is the single most technically interesting finding in the project; lead with it in interviews.
 
 ### Running the Evaluation
 
@@ -634,9 +703,11 @@ docker stop aegis-eval
 - **Mandatory disclaimer:** Every response includes a clear statement that this is not a substitute for professional medical advice.
 - **Guardrails:** The LLM is constrained to ATS 1-5 via structured prompting with explicit vitals thresholds, risk-modifier escalation rules, and anti-hallucination directives. The rule-based keyword layer provides a safety floor for ATS-1, ATS-2, and ATS-5 classifications.
 - **Known limitations:**
-  - The LLM can hallucinate. The RAG layer grounds it in guideline text, and the system prompt includes explicit anti-hallucination rules (only cite guidelines directly relevant to stated symptoms; never introduce unstated conditions). Vision findings are appended verbatim — the text LLM never sees them, eliminating cross-model hallucination.
-  - The vision model uses the same Ollama instance as the text triage model. Its output is constrained to specific risk labels (`High-Risk`, `Low-Risk`, `insufficient confidence`) and a 0-1 float confidence score. While it processes general medical images, its performance may vary depending on the image type and quality.
-  - The security filter uses scored regex heuristics with Unicode defense — effective against common attacks but novel ML-based jailbreaks may still bypass it.
+  - The LLM can hallucinate. The RAG layer grounds it in guideline text, and the system prompt includes explicit anti-hallucination rules (only cite guidelines directly relevant to stated symptoms; never introduce unstated conditions). Vision findings are appended verbatim — the text LLM never sees them, which eliminates cross-model contamination but does not prevent the vision model itself from hallucinating visual findings.
+  - **Vision is unevaluated.** The vision component has zero quantitative accuracy results. A 4B quantized multimodal model doing High/Low-Risk stratification on wounds and rashes is almost certainly not clinically meaningful without validation against a labelled dataset (e.g., HAM10000 for skin lesions). The vision output is constrained to specific risk labels, but the underlying model performance is unmeasured.
+  - **RAG over a 5-document corpus is limited.** With top_k=3 (top_k=1 on Cloud Run), retrieval over a corpus that is mostly disease-specific (WHO pediatric, MOH hypertension/diabetes, NHLBI asthma) rather than triage-specific may surface background that isn't actually about urgency. There is no retrieval eval — no measurement of whether cited chunks support the ATS decision. Citations are provided for explainability but retrieval relevance is unmeasured.
+  - The security filter uses scored regex heuristics with Unicode defense — a demonstration of defense-in-depth patterns, not a bypass-proof control. Regex blocklists are bypassable by construction, and novel ML-based jailbreaks may still succeed.
+  - **The underlying model (MedGemma 1.5 4B) has not been evaluated or optimized for ED triage.** Its official benchmarks are on radiology, dermatology, pathology, ophthalmology, and medical exam QA (MedQA: 69.1%, MedMCQA: 59.8%). The model card notes it "may make it more sensitive to the specific prompt used" — triage performance is likely prompt-dependent in ways not yet measured.
   - English language only in the MVP.
 
 If you discover a safety issue or bypass, please open a GitHub issue or email me directly.
@@ -664,7 +735,7 @@ These documents are used under their respective public-domain / non-commercial e
 - [x] MVP: Prompt-injection security gateway
 - [x] MVP: Prometheus monitoring + dashboard
 - [x] Post-MVP: Scored heuristics security gateway (16+ patterns, Unicode defense, burst rate limiting, circuit breaker, security headers)
-- [x] Post-MVP: Comprehensive evaluation suite (332 backend tests, 94% coverage; 56 frontend tests; Docker + GPU evaluation at 94.1% accuracy)
+- [x] Post-MVP: Comprehensive evaluation suite (332 backend tests, 94% coverage; 56 frontend tests; Docker + GPU live-model smoke test at 16/17)
 - [ ] Post-MVP: Adversarial image detection (FGSM demo + rejection)
 - [ ] Post-MVP: ML-based intent classification guard (further upgrade from scored regex heuristics)
 - [ ] Post-MVP: Edge deployment (ONNX Runtime + Raspberry Pi)
@@ -687,7 +758,7 @@ This is a personal portfolio project. I am not accepting external code contribut
 This project is released for **non-commercial research and educational use only**.
 
 - Code: MIT License (see [LICENSE](./LICENSE))
-- Model weights (Gemma): Subject to [Gemma Terms of Use](https://ai.google.dev/gemma/terms)
+- Model weights (MedGemma): Subject to [Health AI Developer Foundations terms of use](https://developers.google.com/health-ai-developer-foundations/terms)
 - Guideline PDFs: Copyright respective authors (WHO, MOH Singapore, etc.), used under fair use for research
 - HAM10000 dataset: [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
 
@@ -706,4 +777,4 @@ BEng Computer Science & Design @ SUTD | Former MBBS | Cybersecurity & Red Teamin
 
 ---
 
-> *"I spent five years in medical school and then did red teaming at LTA. I built Aegis-MD because I believe the biggest bottleneck in medical AI is not accuracy, it is trust. This prototype is my answer to that question."*
+> *"I spent five years in medical school and then did red teaming at LTA. I built Aegis-MD because I believe trust in medical AI is earned through governance plus validation — not claimed through framing. The privacy architecture, audit logging, and rules-first safety floor are the governance scaffolding. The validation is still needed. This prototype is a step toward that."*
