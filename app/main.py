@@ -13,7 +13,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from app.config import Settings, get_settings
 from app.llm import LLMError
-from app.models import BlockedResponse, HealthResponse, PatientContext, TriageResponse
+from app.models import (
+    BlockedResponse,
+    ComorbidityFlags,
+    HealthResponse,
+    PatientContext,
+    TriageInput,
+    TriageResponse,
+    Vitals,
+)
 from app.observability import (
     CIRCUIT_BREAKER_STATE,
     REQUEST_COUNT,
@@ -31,7 +39,6 @@ from app.security import (
     CircuitBreaker,
     RateLimiter,
     SecurityVerdict,
-    check_patient_context,
     get_client_ip,
     sanitize_text,
     score_text,
@@ -241,8 +248,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     async def triage(
         request: Request,
-        symptoms: Annotated[str, Form()],
-        patient_context: Annotated[str | None, Form()] = None,
+        chief_complaint: Annotated[str, Form()],
+        vitals: Annotated[str | None, Form()] = None,
+        age: Annotated[int, Form()] = 0,
+        sex: Annotated[str, Form()] = "",
+        pain_score: Annotated[int, Form()] = 0,
+        onset: Annotated[str | None, Form()] = None,
+        arrival_mode: Annotated[str | None, Form()] = None,
+        consciousness: Annotated[str | None, Form()] = None,
+        mechanism: Annotated[str | None, Form()] = None,
+        comorbidities: Annotated[str | None, Form()] = None,
+        pregnancy: Annotated[str | None, Form()] = None,
+        allergies: Annotated[str | None, Form()] = None,
         image: Annotated[UploadFile | None, File()] = None,
     ) -> TriageResponse:
         started = time.perf_counter()
@@ -271,16 +288,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         rate_info = limiter.info(client_ip)
 
-        # ── 2. Symptom length ────────────────────────────────────────
-        if len(symptoms) > settings_local.max_symptom_chars:
+        # ── 2. Chief complaint validation ────────────────────────────
+        if not chief_complaint or not chief_complaint.strip():
+            raise HTTPException(status_code=422, detail="chief_complaint is required")
+        if len(chief_complaint) > settings_local.max_symptom_chars:
             raise HTTPException(
                 status_code=422,
-                detail=f"symptoms must be {settings_local.max_symptom_chars} characters or fewer",
+                detail=f"chief_complaint must be {settings_local.max_symptom_chars} characters or fewer",
             )
 
-        # ── 3. Sanitize & score symptoms ─────────────────────────────
-        clean_symptoms = sanitize_text(symptoms)
-        symptom_score = score_text(symptoms, field_name="symptoms")
+        # ── 3. Sanitize & score chief complaint ─────────────────────
+        clean_complaint = sanitize_text(chief_complaint)
+        symptom_score = score_text(chief_complaint, field_name="chief_complaint")
         if symptom_score.verdict == SecurityVerdict.BLOCK:
             SECURITY_BLOCKED.labels("prompt_injection").inc()
             log_security_event(
@@ -309,15 +328,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 backup_count=settings_local.log_backup_count,
             )
 
-        # ── 4. Validate & sanitize patient_context ───────────────────
-        if patient_context is not None:
-            ctx_score = check_patient_context(patient_context)
-            if ctx_score.verdict == SecurityVerdict.BLOCK:
+        # ── 4. Validate & sanitize optional text fields ─────────────
+        if allergies:
+            allergy_score = score_text(allergies, field_name="allergies")
+            if allergy_score.verdict == SecurityVerdict.BLOCK:
                 SECURITY_BLOCKED.labels("prompt_injection").inc()
                 log_security_event(
                     log_dir=settings_local.log_dir,
                     request_id=request_id,
-                    reason=f"prompt_injection:patient_context:{ctx_score.reason}",
+                    reason=f"prompt_injection:allergies:{allergy_score.reason}",
                     client_ip=client_ip,
                     path=request.url.path,
                     max_bytes=settings_local.log_max_bytes,
@@ -325,50 +344,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return _blocked(
                     status_code=400,
-                    error="Security policy violation: potentially malicious input in patient_context.",
+                    error="Security policy violation: potentially malicious input in allergies.",
                     request_id=request_id,
                 )
-            if ctx_score.verdict == SecurityVerdict.WARN:
-                SECURITY_WARNED.labels("prompt_injection").inc()
-                log_security_event(
-                    log_dir=settings_local.log_dir,
-                    request_id=request_id,
-                    reason=f"prompt_injection_warn:patient_context:{ctx_score.reason}",
-                    client_ip=client_ip,
-                    path=request.url.path,
-                    max_bytes=settings_local.log_max_bytes,
-                    backup_count=settings_local.log_backup_count,
+            if len(allergies) > settings_local.max_allergies_chars:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"allergies must be {settings_local.max_allergies_chars} characters or fewer",
                 )
 
-        parsed_context = _parse_patient_context(patient_context)
+        # ── 5. Parse structured JSON fields ─────────────────────────
+        parsed_vitals = _parse_json_field(vitals, Vitals, "vitals")
+        parsed_comorbidities = _parse_json_field(
+            comorbidities, ComorbidityFlags, "comorbidities"
+        )
+
+        # ── 6. Build TriageInput ─────────────────────────────────────
+        try:
+            triage_input = TriageInput(
+                chief_complaint=clean_complaint,
+                vitals=parsed_vitals,
+                age=age,
+                sex=sex,  # type: ignore[arg-type]
+                pain_score=pain_score,
+                onset=onset,  # type: ignore[arg-type]
+                arrival_mode=arrival_mode,  # type: ignore[arg-type]
+                consciousness=consciousness,  # type: ignore[arg-type]
+                mechanism=mechanism,  # type: ignore[arg-type]
+                comorbidities=parsed_comorbidities,
+                pregnancy=pregnancy,  # type: ignore[arg-type]
+                allergies=allergies,
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc.errors())) from exc
+
+        # ── 7. Validate image (if provided) ──────────────────────────
         image_bytes = await _validate_image(image, settings_local)
 
-        # ── 5. Circuit breaker check ─────────────────────────────────
+        # ── 8. Circuit breaker check ─────────────────────────────────
         if not breaker.allow_request():
             raise HTTPException(
                 status_code=503,
                 detail="Service temporarily unavailable — downstream dependencies are failing.",
             )
 
-        # ── 6. Run triage (parallel vision + text when image present) ──
+        # ── 9. Run triage (parallel vision + text when image present) ─
         final_verdict = symptom_score.verdict.value
         try:
             with TRIAGE_LATENCY.time():
                 if image_bytes:
-                    # Fire vision and text concurrently.
+                    # Build minimal PatientContext for vision endpoint compatibility.
+                    vision_ctx = PatientContext(age=age, sex=sex if sex in ("male", "female") else None)  # type: ignore[arg-type]
                     vision_task = run_in_threadpool(
-                        classify_vision, image_bytes, parsed_context
+                        classify_vision, image_bytes, vision_ctx
                     )
                     text_task = run_in_threadpool(
                         classify_text,
-                        clean_symptoms,
-                        parsed_context,
-                        vision_result=None,  # text LLM runs without vision context
+                        triage_input,
+                        vision_result=None,
                     )
                     vision_result, triage_result = await asyncio.gather(
                         vision_task, text_task
                     )
-                    # Merge urgency levels programmatically (no LLM — zero hallucination).
                     if vision_result is not None:
                         triage_result = merge_triage_results(
                             triage_result, vision_result
@@ -377,8 +414,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     vision_result = None
                     triage_result = await run_in_threadpool(
                         classify_text,
-                        clean_symptoms,
-                        parsed_context,
+                        triage_input,
                         vision_result=None,
                     )
             breaker.record_success()
@@ -390,10 +426,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Text triage RAG/LLM dependency is unavailable.",
             ) from exc
 
-        URGENCY_DISTRIBUTION.labels(triage_result.urgency).inc()
+        URGENCY_DISTRIBUTION.labels(triage_result.ats_category).inc()
         latency_ms = int((time.perf_counter() - started) * 1000)
 
-        # ── 7. Output safety ─────────────────────────────────────────
+        # ── 10. Output safety ────────────────────────────────────────
         safe_rationale = _truncate_if_needed(
             triage_result.rationale, settings_local.max_rationale_chars
         )
@@ -403,7 +439,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         triage_result.rationale = safe_rationale
         triage_result.disclaimer = safe_disclaimer
 
-        # ── 8. Audit log ─────────────────────────────────────────────
+        # ── 11. Audit log ────────────────────────────────────────────
         log_request_audit(
             log_dir=settings_local.log_dir,
             request_id=request_id,
@@ -411,14 +447,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             path=request.url.path,
             latency_ms=latency_ms,
             status_code=200,
-            urgency=triage_result.urgency,
+            urgency=triage_result.ats_category,
             security_verdict=final_verdict,
             has_image=image_bytes is not None,
             max_bytes=settings_local.log_max_bytes,
             backup_count=settings_local.log_backup_count,
         )
 
-        # ── 9. Response with rate-limit headers ──────────────────────
+        # ── 12. Response with rate-limit headers ─────────────────────
         response = TriageResponse(
             request_id=request_id,
             triage_result=triage_result,
@@ -460,12 +496,12 @@ _DASHBOARD_HTML = """
   </head>
   <body>
     <main>
-      <h1>Aegis-MD Monitoring</h1>
-      <p>Functional scaffold dashboard. Prometheus metrics are available at <code>/metrics</code>.</p>
+      <h1>Aegis-MD ED Triage Monitoring</h1>
+      <p>ED Triage Console dashboard. Prometheus metrics are available at <code>/metrics</code>.</p>
       <section class="grid">
         <div class="panel"><strong>Gateway</strong><br>FastAPI online</div>
         <div class="panel"><strong>Security</strong><br>Scored heuristics + burst rate limit + circuit breaker</div>
-        <div class="panel"><strong>Models</strong><br>Placeholder routing active</div>
+        <div class="panel"><strong>ATS Triage</strong><br>ATS 1-5 classification with RAG + LLM</div>
       </section>
     </main>
   </body>
@@ -516,7 +552,22 @@ def _blocked(*, status_code: int, error: str, request_id: str) -> JSONResponse:
     )
 
 
+def _parse_json_field(raw: str | None, model_cls: type, field_name: str) -> object:
+    """Parse and validate a JSON form field into a Pydantic model."""
+    if not raw:
+        return model_cls()
+    try:
+        payload = json.loads(raw)
+        return model_cls.model_validate(payload)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name} must be valid JSON matching the expected schema",
+        ) from exc
+
+
 def _parse_patient_context(patient_context: str | None) -> PatientContext | None:
+    """Legacy parser for vision endpoint — kept for backward compatibility."""
     if not patient_context:
         return None
     try:
