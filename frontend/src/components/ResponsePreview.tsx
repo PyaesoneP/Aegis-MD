@@ -17,12 +17,11 @@ const cardVariants = {
   }),
 }
 
-/** Staggered skeleton cards that appear one-by-one during loading. */
 const loadingStages = [
-  { label: 'Analyzing symptoms…', colSpan: '' as string },
-  { label: 'Evaluating urgency…', colSpan: 'lg:col-span-2' as string },
-  { label: 'Cross-referencing sources…', colSpan: '' as string },
-  { label: 'Generating assessment…', colSpan: 'lg:col-span-2' as string },
+  { label: 'Reviewing chief complaint…', colSpan: '' as string },
+  { label: 'Assessing vitals…', colSpan: 'lg:col-span-2' as string },
+  { label: 'Cross-referencing guidelines…', colSpan: '' as string },
+  { label: 'Generating triage card…', colSpan: 'lg:col-span-2' as string },
 ]
 
 const loadingCardVariants = {
@@ -123,10 +122,13 @@ export function ResponsePreview({ response, loading }: ResponsePreviewProps) {
                 animate="visible"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-muted font-display">
-                  Urgency
+                  ATS Category
                 </p>
                 <div className="mt-3">
-                  <UrgencyBadge urgency={response!.triage_result.urgency} />
+                  <UrgencyBadge
+                    category={response!.triage_result.ats_category}
+                    card={response!.triage_result.ats_card}
+                  />
                 </div>
               </motion.div>
 

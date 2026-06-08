@@ -1,57 +1,143 @@
 from app.llm import LLMError, rag_response, vision_response
 from app.config import get_settings
-from app.models import PatientContext, TriageResult, Urgency, VisionResult
+from app.models import (
+    ATSCard,
+    ATSCategory,
+    PatientContext,
+    TriageInput,
+    TriageResult,
+    VisionResult,
+)
 
 
 DISCLAIMER = (
     "This is a research prototype, not a substitute for professional medical advice."
 )
 
-EMERGENCY_TERMS = (
+# ── Keyword-to-ATS mapping for rule-based fallback (Tier 3) ──────────
+# ATS-1 discriminators: immediately life-threatening
+ATS1_TERMS = (
+    "cardiac arrest",
+    "airway obstruction",
+    "severe respiratory distress",
+    "unresponsive",
+    "major trauma",
+    "multi-trauma",
+    "polytrauma",
+    "anaphylactic shock",
+    "severe burns",
+    "gcs 3",
+    "gcs 4",
+    "gcs 5",
+    "apnoeic",
+    "apneic",
+    "cardiorespiratory arrest",
+)
+
+# ATS-2 discriminators: imminently life-threatening
+ATS2_TERMS = (
     "chest pain",
-    "shortness of breath",
-    "severe bleeding",
-    "stroke",
-    "unconscious",
-    "seizure",
-    "suicidal",
-    "anaphylaxis",
-)
-
-URGENT_TERMS = (
-    "fever",
-    "infection",
-    "worsening",
     "severe pain",
-    "persistent vomiting",
-    "dehydration",
-    "new rash",
+    "altered consciousness",
+    "stroke",
+    "seizure",
+    "active seizure",
+    "severe bleeding",
+    "haemorrhage",
+    "hemorrhage",
+    "anaphylaxis",
+    "severe asthma",
+    "major fracture",
+    "open fracture",
+    "amputation",
+    "sudden vision loss",
+    "sudden severe headache",
+    "suicidal",
+    "suicide attempt",
+    "overdose",
+    "shortness of breath",
+    "respiratory distress",
+    "diaphoretic",
+    # Trauma + mechanism → high-energy transfer
+    "ejected",
+    "rollover",
+    "entrapped",
+    "high speed",
+    "major trauma",
+    "penetrating trauma",
+    "head injury with",
+    "confused at scene",
 )
 
-SELF_CARE_TERMS = (
-    "mild cough",
-    "runny nose",
-    "minor headache",
-    "small bruise",
+# ATS-4 discriminators: less urgent — normal vitals, minor complaints
+ATS4_TERMS = (
+    "sprain",
+    "strain",
+    "twisted ankle",
+    "twisted knee",
+    "twisted wrist",
+    "laceration",
+    "cut finger",
+    "cut hand",
+    "small cut",
+    "minor cut",
+    "dysuria",
+    "urinary frequency",
+    "uti",
+    "earache",
+    "ear pain",
     "sore throat",
+    "minor burn",
+    "superficial burn",
+    "insect bite",
+    "constipation",
+    "diarrhoea no blood",
+    "diarrhea no blood",
 )
 
-URGENCY_RANK: dict[Urgency, int] = {
-    "Self-Care": 0,
-    "Routine": 1,
-    "Urgent": 2,
-    "Emergency": 3,
+# ATS-5 discriminators: minimal urgency
+ATS5_TERMS = (
+    "minor rash",
+    "rash no fever",
+    "itchy rash",
+    "medication refill",
+    "repeat prescription",
+    "medical certificate",
+    "sick note",
+    "chronic condition stable",
+    "minor abrasion",
+    "small bruise",
+    "insect bite no reaction",
+    "suture removal",
+    "dressing check",
+    "wound check",
+    "stitch removal",
+)
+
+ATS_RANK: dict[ATSCategory, int] = {
+    "ATS-5": 1,
+    "ATS-4": 2,
+    "ATS-3": 3,
+    "ATS-2": 4,
+    "ATS-1": 5,
 }
 
 
 def classify_text(
-    symptoms: str,
-    patient_context: PatientContext | None = None,
+    triage_input: TriageInput,
     vision_result: VisionResult | None = None,
 ) -> TriageResult:
-    text = symptoms.lower()
-    rule_urgency = _select_urgency(text)
+    """Classify ED triage input into an ATS category.
 
+    Uses a three-tier approach:
+    Tier 1 — Full RAG (retrieval + LLM)
+    Tier 2 — LLM only (no retrieval, handled internally by rag_response)
+    Tier 3 — Rule-based fallback (keyword matching only)
+    """
+    text = triage_input.chief_complaint.lower()
+    rule_ats = _select_ats(text)
+
+    # ── Consolidate vision findings for the LLM prompt ───────────────
     vision_findings: str | None = None
     if vision_result is not None:
         parts = [f"Risk: {vision_result.risk}"]
@@ -61,32 +147,47 @@ def classify_text(
             parts.append(f"Confidence: {vision_result.confidence:.2f}")
         vision_findings = "\n".join(parts)
 
-    # ── Tier 1: Full RAG (retrieval + LLM); Tier 2: LLM-only (no retrieval);
-    #     Tier 3: Rule-based fallback (no LLM at all) ─────────────────
+    # ── Tier 1: Full RAG; Tier 3: Rule-based fallback ────────────────
     try:
         rag_result = rag_response(
-            symptoms,
-            patient_context=patient_context,
-            rule_urgency=rule_urgency,
+            triage_input=triage_input,
+            rule_ats=rule_ats,
             vision_findings=vision_findings,
         )
     except LLMError:
-        return _rule_based_result(rule_urgency, patient_context)
+        return _rule_based_result(rule_ats, triage_input)
 
-    urgency = _highest_urgency(rule_urgency, rag_result.urgency)
+    ats = rule_ats
+    # ── LLM may upgrade urgency but cannot override a definitive ATS-5 ──
+    if rule_ats != "ATS-5":
+        ats = _highest_ats(rule_ats, rag_result.ats_category)
     rationale = rag_result.rationale
 
-    if urgency != rag_result.urgency:
+    if ats != rag_result.ats_category:
         rationale += (
-            f" Local triage safeguards raised the final urgency from "
-            f"{rag_result.urgency} to {urgency}."
+            f" Local triage safeguards raised the final ATS category from "
+            f"{rag_result.ats_category} to {ats}."
         )
 
-    if patient_context and patient_context.age is not None and patient_context.age >= 65:
+    # ── Age / comorbidity escalation note ────────────────────────────
+    if triage_input.age >= 65:
         rationale += " Age over 65 was noted as a factor for lower threshold review."
+    if triage_input.comorbidities.anticoagulants:
+        rationale += (
+            " Anticoagulant use noted — lower threshold for head injury "
+            "and bleeding presentations."
+        )
+    if triage_input.pregnancy == "Yes":
+        rationale += (
+            " Pregnancy noted — lower threshold for abdominal pain, "
+            "bleeding, and trauma presentations."
+        )
+
+    ats_card = ATSCard.from_category(ats)
 
     return TriageResult(
-        urgency=urgency,
+        ats_category=ats,
+        ats_card=ats_card,
         rationale=rationale,
         confidence=rag_result.confidence,
         sources=rag_result.sources,
@@ -123,35 +224,40 @@ def classify_vision(
         )
 
 
-def _select_urgency(text: str) -> Urgency:
-    if any(term in text for term in EMERGENCY_TERMS):
-        return "Emergency"
-    if any(term in text for term in URGENT_TERMS):
-        return "Urgent"
-    if any(term in text for term in SELF_CARE_TERMS):
-        return "Self-Care"
-    return "Routine"
+def _select_ats(text: str) -> ATSCategory:
+    """Rule-based ATS classification from chief complaint keywords."""
+    if any(term in text for term in ATS1_TERMS):
+        return "ATS-1"
+    if any(term in text for term in ATS2_TERMS):
+        return "ATS-2"
+    if any(term in text for term in ATS5_TERMS):
+        return "ATS-5"
+    if any(term in text for term in ATS4_TERMS):
+        return "ATS-4"
+    # Default: ATS-3 covers most undifferentiated presentations.
+    return "ATS-3"
 
 
-def _highest_urgency(first: Urgency, second: Urgency) -> Urgency:
-    return first if URGENCY_RANK[first] >= URGENCY_RANK[second] else second
+def _highest_ats(first: ATSCategory, second: ATSCategory) -> ATSCategory:
+    """Return the more urgent (numerically lower) ATS category."""
+    return first if ATS_RANK[first] >= ATS_RANK[second] else second
 
 
-# ── Vision → Urgency mapping for parallel text+vision merge ──────────
-_VISION_TO_URGENCY: dict[str, Urgency | None] = {
-    "High-Risk": "Emergency",
-    "Low-Risk": "Routine",
-    "insufficient confidence": None,  # don't affect text urgency
+# ── Vision → ATS mapping for parallel text+vision merge ──────────────
+_VISION_TO_ATS: dict[str, ATSCategory | None] = {
+    "High-Risk": "ATS-2",
+    "Low-Risk": "ATS-4",
+    "insufficient confidence": None,
 }
 
 
-def _vision_risk_to_urgency(risk: str) -> Urgency | None:
-    """Map a vision risk tier to a text triage urgency level.
+def _vision_risk_to_ats(risk: str) -> ATSCategory | None:
+    """Map a vision risk tier to an ATS category.
 
     Returns None when the vision result should not influence urgency
     (e.g. insufficient confidence).
     """
-    return _VISION_TO_URGENCY.get(risk)
+    return _VISION_TO_ATS.get(risk)
 
 
 def merge_triage_results(
@@ -160,14 +266,14 @@ def merge_triage_results(
 ) -> TriageResult:
     """Merge parallel text triage and vision results into a single assessment.
 
-    Urgency is the maximum of the text classification and the vision risk
-    tier mapped to urgency.  The rationale is structured with clearly
-    labelled sections — no LLM rewrites, so zero hallucination risk.
+    ATS category is the most urgent of the text classification and the
+    vision risk tier mapped to ATS.  The rationale is structured with
+    clearly labelled sections — no LLM rewrites, so zero hallucination risk.
     """
-    vision_urgency = _vision_risk_to_urgency(vision_result.risk)
-    urgency = text_result.urgency
-    if vision_urgency is not None:
-        urgency = _highest_urgency(text_result.urgency, vision_urgency)
+    vision_ats = _vision_risk_to_ats(vision_result.risk)
+    ats = text_result.ats_category
+    if vision_ats is not None:
+        ats = _highest_ats(text_result.ats_category, vision_ats)
 
     conf_str = (
         f"{vision_result.confidence:.0%}"
@@ -176,40 +282,36 @@ def merge_triage_results(
     )
 
     # ── Structured rationale: labelled sections, no LLM rewriting ────
-    sections: list[str] = []
+    sections: list[str] = [text_result.rationale]
 
-    # Text-based assessment (LLM + RAG)
-    sections.append(text_result.rationale)
-
-    # Image findings (vision model, verbatim)
     if vision_result.rationale:
         sections.append(
             f"Image findings: {vision_result.rationale} "
             f"(risk: {vision_result.risk}, confidence: {conf_str})"
         )
 
-    # Combined urgency summary
-    if urgency != text_result.urgency:
+    if ats != text_result.ats_category:
         sections.append(
-            f"Overall urgency elevated to {urgency} (from "
-            f"{text_result.urgency}) — image analysis revealed "
+            f"Overall ATS category elevated to {ats} (from "
+            f"{text_result.ats_category}) — image analysis revealed "
             f"{vision_result.risk.lower().replace('-', ' ')} findings."
         )
     elif vision_result.risk == "insufficient confidence":
         sections.append(
-            f"Overall urgency: {urgency} — image analysis was inconclusive "
+            f"Overall ATS category: {ats} — image analysis was inconclusive "
             f"and did not modify the text-based assessment."
         )
     else:
         sections.append(
-            f"Overall urgency: {urgency} — consistent across both assessments."
+            f"Overall ATS category: {ats} — consistent across both assessments."
         )
 
-    rationale = "\n\n".join(sections)
+    ats_card = ATSCard.from_category(ats)
 
     return TriageResult(
-        urgency=urgency,
-        rationale=rationale,
+        ats_category=ats,
+        ats_card=ats_card,
+        rationale="\n\n".join(sections),
         confidence=text_result.confidence,
         sources=text_result.sources,
         disclaimer=text_result.disclaimer,
@@ -217,25 +319,30 @@ def merge_triage_results(
 
 
 def _rule_based_result(
-    rule_urgency: Urgency,
-    patient_context: PatientContext | None = None,
+    rule_ats: ATSCategory,
+    triage_input: TriageInput,
 ) -> TriageResult:
     """Fallback result when LLM is entirely unavailable (Tier 3 degradation).
 
-    Returns a rule-based triage assessment using keyword matching only,
-    with an explicit warning that LLM inference was unavailable.
+    Returns a rule-based triage assessment using keyword matching and
+    vital-sign thresholds only, with an explicit warning that LLM
+    inference was unavailable.
     """
     rationale = (
-        f"Rule-based urgency classification (LLM unavailable): "
-        f"symptoms matched the '{rule_urgency}' keyword tier. "
+        f"Rule-based ATS classification (LLM unavailable): "
+        f"chief complaint keywords matched the '{rule_ats}' tier. "
         "No guideline citations or AI-generated rationale are available. "
         "This is a degraded assessment — seek professional medical evaluation."
     )
-    if patient_context and patient_context.age is not None and patient_context.age >= 65:
+
+    if triage_input.age >= 65:
         rationale += " Age over 65 was noted as a factor for lower threshold review."
 
+    ats_card = ATSCard.from_category(rule_ats)
+
     return TriageResult(
-        urgency=rule_urgency,
+        ats_category=rule_ats,
+        ats_card=ats_card,
         rationale=rationale,
         confidence="low",
         sources=["rule-based fallback — LLM unavailable"],

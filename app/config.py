@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     rate_limit_dashboard_requests: int = 30
 
     # ── Input validation ────────────────────────────────────────────────
-    max_symptom_chars: int = 2_000
+    max_symptom_chars: int = 150  # chief complaint limit for ED triage
+    max_allergies_chars: int = 200
     max_image_bytes: int = 5 * 1024 * 1024
     max_body_bytes: int = 10 * 1024 * 1024  # total request body limit
     max_json_depth: int = 5

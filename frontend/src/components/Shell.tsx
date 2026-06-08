@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Lenis from 'lenis'
 import { submitTriage, ApiError } from '../lib/api'
-import type { TriageRequest, TriageResponse } from '../types/triage'
+import type { TriageFormData, TriageResponse } from '../types/triage'
 import { TriageHeader } from './TriageHeader'
 import { TriageForm } from './TriageForm'
 import { ResponsePreview } from './ResponsePreview'
@@ -33,16 +33,15 @@ export function Shell() {
     return () => lenis.destroy()
   }, [])
 
-  async function handleSubmit(req: TriageRequest) {
+  async function handleSubmit(data: TriageFormData) {
     setApiError(null)
     setResponse(null)
     setLoading(true)
 
-    // Scroll to the loading sequence so user sees the engaging animation
     responseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
     try {
-      const res = await submitTriage(req)
+      const res = await submitTriage(data)
       setResponse(res)
       setTimeout(() => {
         responseRef.current?.querySelector('h2')?.focus()
