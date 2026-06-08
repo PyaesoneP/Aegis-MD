@@ -1,7 +1,9 @@
 # Aegis-MD
 
-> **An ED Triage Console — containerized, research-grade, with built-in adversarial safety guardrails.**<br>
+> **An ED Triage Console — local-first, privacy-by-design, with built-in adversarial safety guardrails.**<br>
 > Built by a former clinician and cybersecurity intern to explore the intersection of medical AI, LLM security, and production MLOps.
+>
+> **All inference runs on-device. No patient data ever leaves the machine.** The Cloud Run deployment exists solely as a public demo — the intended architecture is local GPU inference.
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)](https://fastapi.tiangolo.com/)
@@ -16,13 +18,13 @@
 
 **[Try the live demo →](https://pyaesonep.github.io/Aegis-MD/)**
 
-Upload a symptom description (and optionally a skin-lesion image) to receive an informational triage urgency suggestion with explainable sources and confidence indicators. The backend runs on Cloud Run (CPU-only by default); cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
+A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom description to receive an informational triage urgency suggestion. **This is a demo — the intended architecture runs entirely on local hardware with zero data leaving the machine.** Cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
 
 ![Aegis-MD Demo](./assets/Aegis-MD.gif)
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
-> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. Locally on an RTX 5070 Ti Mobile (12 GB VRAM) the pipeline completes in ~2–3s (text-only) or ~8-10s (with vision running in parallel). With a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
+> **Why the Cloud Run demo is slow:** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. **This is not the intended deployment model** — the system is designed for local GPU inference where triage completes in ~2–3s with zero network dependency and zero data exfiltration risk. The Cloud Run instance exists only so reviewers can interact with a live endpoint without installing Ollama. The latency is a **cost constraint on the demo, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput on local hardware.
 
 To debug connectivity issues, open the browser DevTools console and run:
 ```js
@@ -43,7 +45,7 @@ Aegis-MD is an **ED Triage Console** — a multimodal clinical triage agent desi
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
 
-**Privacy-first by design.** All inference runs locally — the LLM and vision model execute on-device via Ollama with no data ever leaving the machine. No patient symptoms, images, or triage results are sent to external APIs, stored beyond the request lifecycle, or used for training. This is a deliberate architectural choice: medical triage data is sensitive by nature, and local inference eliminates the trust, compliance, and latency burdens of cloud-hosted models.
+**Privacy-first by design — local inference only.** All inference runs on-device via Ollama. The LLM and vision model execute locally with no data ever leaving the machine. No patient symptoms, images, or triage results are sent to external APIs, stored beyond the request lifecycle, or used for training. This is a deliberate architectural choice: medical triage data is sensitive by nature, and local inference eliminates the trust, compliance, and latency burdens of cloud-hosted models. **The Cloud Run demo is a convenience for portfolio review — the system is meant to run on your own hardware.**
 
 This project is explicitly **not a diagnostic tool**. It is a research prototype designed to demonstrate:
 - Safe medical AI scoping (triage-only, no diagnosis)
@@ -341,7 +343,9 @@ The evaluation framework uses 17 synthetic ED triage cases (`scripts/synthetic_t
 
 ---
 
-##  Docker Deployment
+##  Docker Deployment (Optional — for Cloud Run demo)
+
+Docker is used for the public Cloud Run demo. **For local use, run directly with Ollama** (see Quick Start above) — this gives you GPU acceleration and true local-only inference.
 
 ### Prerequisites for building
 Copy the Ollama model into the build context before running `docker build`:
