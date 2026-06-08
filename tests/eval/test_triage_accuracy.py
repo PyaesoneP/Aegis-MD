@@ -20,14 +20,14 @@ sys.path.insert(0, str(_scripts_dir))
 
 from synthetic_triage_cases import CASES, TriageCase  # noqa: E402
 
-from app.llm import RagResponse
-from app.models import (
+from app.llm import RagResponse  # noqa: E402
+from app.models import (  # noqa: E402
     ATSCategory,
     ComorbidityFlags,
     TriageInput,
     Vitals,
 )
-from app.triage import classify_text
+from app.triage import classify_text  # noqa: E402
 
 
 def _case_to_triage_input(case: TriageCase) -> TriageInput:

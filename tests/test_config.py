@@ -1,7 +1,5 @@
 """Tests for app.config — default settings, env-var overrides, and property parsing."""
 
-import pytest
-
 from app.config import Settings
 
 

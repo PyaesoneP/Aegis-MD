@@ -8,7 +8,7 @@ Usage:
 import pytest
 
 from app.llm import LLMError, RagResponse
-from app.models import ComorbidityFlags, TriageInput
+from app.models import TriageInput
 from app.security import SecurityVerdict, score_text
 from app.triage import classify_text
 

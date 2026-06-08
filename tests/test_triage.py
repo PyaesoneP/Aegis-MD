@@ -8,7 +8,6 @@ from app.main import create_app
 from app.models import (
     ATSCard,
     ComorbidityFlags,
-    PatientContext,
     TriageInput,
     TriageResult,
     VisionResult,

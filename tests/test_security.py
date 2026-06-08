@@ -8,9 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.security import (
-    SecurityScore,
     SecurityVerdict,
-    _CONTROL_CHARS_RE,
     _translate_homoglyphs,
     check_patient_context,
     detect_prompt_injection,

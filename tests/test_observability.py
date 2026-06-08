@@ -2,7 +2,6 @@
 client ID hashing, and alert threshold tracking."""
 
 import json
-import time
 from pathlib import Path
 
 import pytest

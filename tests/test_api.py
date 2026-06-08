@@ -7,7 +7,6 @@ from app.config import Settings
 from app.llm import RagResponse
 from app.main import create_app
 from app.observability import _reset_security_logger
-from app.retriever import RetrievalError
 
 
 @pytest.fixture(autouse=True)
