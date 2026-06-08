@@ -39,6 +39,8 @@ Aegis-MD is a **minimum viable prototype (MVP)** of a multimodal clinical triage
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
 
+**Privacy-first by design.** All inference runs locally — the LLM and vision model execute on-device via Ollama with no data ever leaving the machine. No patient symptoms, images, or triage results are sent to external APIs, stored beyond the request lifecycle, or used for training. This is a deliberate architectural choice: medical triage data is sensitive by nature, and local inference eliminates the trust, compliance, and latency burdens of cloud-hosted models.
+
 This project is explicitly **not a diagnostic tool**. It is a research prototype designed to demonstrate:
 - Safe medical AI scoping (triage-only, no diagnosis)
 - LLM security hardening (prompt injection defense)
