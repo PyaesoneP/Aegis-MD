@@ -24,7 +24,7 @@ A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom d
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
-> **Why the Cloud Run demo is slow:** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. **This is not the intended deployment model** — the system is designed for local GPU inference where triage completes in ~2–3s with zero network dependency and zero data exfiltration risk. The Cloud Run instance exists only so reviewers can interact with a live endpoint without installing Ollama. The latency is a **cost constraint on the demo, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput on local hardware.
+> **Why the Cloud Run demo is slow:** This is a student portfolio project running on a **$0 budget**. The public demo uses Cloud Run's CPU-only tier because GPU instances require a paid quota increase. **Locally, Docker with `--gpu` or running Ollama directly both deliver ~2–3s inference** — the architecture is designed for GPU throughput. The Cloud Run instance exists only so reviewers can interact with a live endpoint without installing anything.
 
 To debug connectivity issues, open the browser DevTools console and run:
 ```js
@@ -343,9 +343,9 @@ The evaluation framework uses 17 synthetic ED triage cases (`scripts/synthetic_t
 
 ---
 
-##  Docker Deployment (Optional — for Cloud Run demo)
+##  Docker Deployment
 
-Docker is used for the public Cloud Run demo. **For local use, run directly with Ollama** (see Quick Start above) — this gives you GPU acceleration and true local-only inference.
+Docker is used for the public Cloud Run demo and can also run locally with GPU passthrough via `nvidia-container-toolkit`. **For the simplest local setup, run directly with Ollama** (see Quick Start above).
 
 ### Prerequisites for building
 Copy the Ollama model into the build context before running `docker build`:
@@ -358,13 +358,18 @@ ls ollama_models/
 
 ### Build and run locally
 ```bash
-docker build -t asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4 .
-docker run -p 8000:8000 asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:v4
+docker build -t aegis-md:eval .
+
+# CPU-only
+docker run -p 8000:8000 aegis-md:eval
+
+# With GPU (requires nvidia-container-toolkit)
+docker run --gpus all -p 8000:8000 aegis-md:eval
 ```
 
 Cloud Run uses the container `PORT` environment variable automatically; the Docker image starts `uvicorn app.main:app` on that port via `scripts/entrypoint.sh`.
 
-> **Note:** The image is ~7 GB (includes Ollama + CUDA runtime + Q4 model). CPU-only inference yields ~25-30s warm latency (text-only) or ~50-60s (with vision). For lower latency, attach a GPU (`--gpu 1 --gpu-type nvidia-l4`).
+> **Note:** The image is ~7 GB (includes Ollama + CUDA runtime + Q4 model). CPU-only inference yields ~25-37s latency; with GPU passthrough (`--gpus all`) it drops to ~2-3s. Cloud Run GPU requires allowlist — contact GCP support to enable.
 
 ### Deploy to Google Cloud Run (CPU-only)
 ```bash
