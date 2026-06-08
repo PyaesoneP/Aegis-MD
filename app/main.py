@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 import uuid
@@ -36,7 +37,7 @@ from app.security import (
     score_text,
     validate_image_bytes,
 )
-from app.triage import classify_text, classify_vision
+from app.triage import classify_text, classify_vision, merge_triage_results
 
 IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
@@ -349,23 +350,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="Service temporarily unavailable — downstream dependencies are failing.",
             )
 
-        # ── 6. Run triage ────────────────────────────────────────────
+        # ── 6. Run triage (parallel vision + text when image present) ──
         final_verdict = symptom_score.verdict.value
         try:
             with TRIAGE_LATENCY.time():
-                vision_result = await run_in_threadpool(
-                    classify_vision,
-                    image_bytes or b"",
-                    parsed_context,
-                )
-                triage_result = await run_in_threadpool(
-                    classify_text,
-                    clean_symptoms,  # use sanitized text for the model
-                    parsed_context,
-                    vision_result,
-                )
+                if image_bytes:
+                    # Fire vision and text concurrently.
+                    vision_task = run_in_threadpool(
+                        classify_vision, image_bytes, parsed_context
+                    )
+                    text_task = run_in_threadpool(
+                        classify_text,
+                        clean_symptoms,
+                        parsed_context,
+                        vision_result=None,  # text LLM runs without vision context
+                    )
+                    vision_result, triage_result = await asyncio.gather(
+                        vision_task, text_task
+                    )
+                    # Merge urgency levels programmatically (no LLM — zero hallucination).
+                    if vision_result is not None:
+                        triage_result = merge_triage_results(
+                            triage_result, vision_result
+                        )
+                else:
+                    vision_result = None
+                    triage_result = await run_in_threadpool(
+                        classify_text,
+                        clean_symptoms,
+                        parsed_context,
+                        vision_result=None,
+                    )
             breaker.record_success()
-        except (LLMError, RetrievalError) as exc:
+        except LLMError as exc:
             breaker.record_failure()
             CIRCUIT_BREAKER_STATE.labels("failure").inc()
             raise HTTPException(
