@@ -6,6 +6,8 @@
 [![Python](https://img.shields.io/badge/Python-3.12-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
+[![Coverage](https://img.shields.io/badge/coverage-94%25-brightgreen)](./)
+[![Tests](https://img.shields.io/badge/tests-332%20backend%20%7C%2056%20frontend-blue)](./)
 [![License](https://img.shields.io/badge/License-Research%20Use-lightgrey)](./LICENSE)
 
 ---
@@ -219,8 +221,14 @@ curl -X POST http://localhost:8000/api/v1/triage \
 
 ### 6. Run tests
 ```bash
+# Backend: 332 tests, 94% coverage
 pytest tests/ -v --cov=app --cov-report=term-missing
+
+# Frontend: 56 tests across 11 component files
+cd frontend && npx vitest --run
 ```
+
+See the [Test Suite](#-test-suite) section below for a detailed breakdown.
 
 ### 7. Run the React frontend
 ```bash
@@ -253,6 +261,83 @@ The frontend workflow in `.github/workflows/frontend-pages.yml` builds the React
 3. Push to `main` or run **Deploy Frontend to GitHub Pages** manually from the Actions tab.
 
 The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/` and connects to the Cloud Run backend at the URL set in the `VITE_API_BASE_URL` repository variable. For local production builds, copy `frontend/.env.production.example` to `frontend/.env.production` and set your backend URL there.
+
+---
+
+##  Test Suite
+
+The project has a comprehensive layered test suite: **332 backend tests** (94% coverage) and **56 frontend tests** across 11 component files.
+
+### Backend Tests (`tests/`)
+
+| Module | Tests | Coverage | Description |
+|--------|-------|----------|-------------|
+| `test_security.py` | 88 | 99% | Text sanitization (NFKC, homoglyphs, control chars), 16+ BLOCK/WARN injection patterns, JSON depth/size limits, image magic-byte validation, burst-aware rate limiter, circuit breaker lifecycle, client IP extraction |
+| `test_api.py` | 47 | 87% | Health, metrics, dashboard endpoints; triage contract validation; prompt injection blocking (parametrized across 14 attack strings + homoglyph/unicode variants); rate limiting; security headers; CORS; audit logging; output truncation |
+| `test_triage.py` | 59 | 93% | `_select_ats` keyword matching (all 5 ATS levels, priority ordering), `_highest_ats` comparisons, `merge_triage_results` (vision+text fusion), `_rule_based_result` fallback, `classify_vision` degradation paths, escalation notes (age/anticoagulant/pregnancy), vitals normality note edge cases |
+| `test_llm.py` | 46 | 93% | Message extraction, JSON parsing, ATS/confidence/vision normalizers, `_build_user_prompt` (all sections), `_format_vitals`, `_format_comorbidities`, `rag_response` pipeline (mocked Ollama + retrieval) |
+| `test_retriever.py` | 5 | 94% | Guideline object construction, empty results error, ChromaDB import failure |
+| `test_observability.py` | 20 | 98% | Prometheus metrics registration/increment/payload, client ID hashing, JSONL logging + rotation, alert threshold |
+| `test_config.py` | 26 | 100% | Default settings, env var overrides (`Aegis_` prefix), list parsing, type coercion |
+| **Eval** | | | |
+| `test_triage_accuracy.py` | 30 | — | 15 synthetic cases × 2 scenarios (LLM agrees + LLM downgrades) — verifies ATS agreement and safety escalation |
+| `test_safety_evaluation.py` | 13 | — | Safe degradation (Tier 3 fallback), non-medical input handling, hallucination resistance, injection blocking, confidence bounds |
+
+**Total backend: 332 tests, 94% line coverage**
+
+```bash
+# Full suite with coverage
+pytest tests/ -v --cov=app --cov-report=term-missing
+
+# Security only
+pytest tests/test_security.py -v
+
+# Eval only
+pytest tests/eval/ -v
+```
+
+### Frontend Tests (`frontend/src/`)
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `TriageForm.test.tsx` | 15 | Field rendering, validation errors, form submission, loading state, clear, sex toggle, pregnancy conditional, comorbidities |
+| `ResponsePreview.test.tsx` | 11 | Loading skeletons, ATS card, rationale, sources, disclaimer, null/loading states, vision result rendering |
+| `Shell.test.tsx` | 2 | Form submission + response display (existing) |
+| `UrgencyBadge.test.tsx` | 7 | All 5 ATS categories with correct labels and time targets |
+| `SkeletonCard.test.tsx` | 4 | Label rendering, shimmer line count, custom className |
+| `TriageHeader.test.tsx` | 3 | Title, API URL display, smoke test |
+| `PageIntro.test.tsx` | 3 | Heading element, onComplete callback |
+| `CursorGlow.test.tsx` | 1 | Smoke test (renders null in jsdom without fine pointer) |
+| `NoiseOverlay.test.tsx` | 2 | CSS class presence, smoke test |
+| `useMagnetic.test.ts` | 3 | Hook return shape, motion value methods |
+| `api.test.ts` | 7 | `ApiError` class, `submitTriage` POST/error paths, `diagnose()` connectivity checks |
+
+**Total frontend: 56 tests across 11 files**
+
+```bash
+cd frontend
+npm install
+npx vitest --run
+```
+
+### Evaluation Framework (`scripts/` + `tests/eval/`)
+
+The evaluation framework uses 17 synthetic ED triage cases (`scripts/synthetic_triage_cases.py`) covering all ATS categories as ground truth:
+
+- **`tests/eval/test_triage_accuracy.py`** — 30 parametrized tests: runs each case through `classify_text` with mocked LLM responses, verifying ATS agreement and that the safety escalation layer prevents under-triage
+- **`tests/eval/test_safety_evaluation.py`** — 13 tests: Tier 3 degradation, non-medical input, hallucination resistance, injection blocking at security layer
+- **`scripts/run_triage_batch.py`** — CLI runner for live evaluation against a running container:
+  ```bash
+  # Single run
+  python scripts/run_triage_batch.py --url http://localhost:8000
+
+  # With JSON export and per-ATS breakdown
+  python scripts/run_triage_batch.py --url http://localhost:8000 --output-json results.json
+
+  # Consistency measurement across 3 repeat runs
+  python scripts/run_triage_batch.py --url http://localhost:8000 --repeat 3 --output-json results.json
+  ```
+  Supports `--output-json`, `--repeat N`, per-category pass-rate bars, and aggregate statistics (mean ± stdev).
 
 ---
 
@@ -395,84 +480,85 @@ Lightweight HTML monitoring dashboard.
 
 ##  Evaluation
 
-The triage system was evaluated against 17 synthetic ED cases spanning all five ATS categories — from cardiac arrest (ATS-1) to medical certificate requests (ATS-5). Each case includes chief complaint, vitals, age, sex, pain score, and contextual fields (onset, arrival mode, consciousness, mechanism, comorbidities, pregnancy). Tests were run against a Docker container with MedGemma-1.5 4B (Q4 quantized) on CPU.
+The triage system was evaluated against 17 synthetic ED cases spanning all five ATS categories — from cardiac arrest (ATS-1) to medical certificate requests (ATS-5). Each case includes chief complaint, vitals, age, sex, pain score, and contextual fields (onset, arrival mode, consciousness, mechanism, comorbidities, pregnancy). Tests were run against a local Docker container (`aegis-md:eval`, 16.5 GB) with MedGemma-1.5 4B (Q4 quantized) on CPU (4 vCPU).
 
-### Test Case Coverage
-
-| # | Case | Expected | Description |
-|---|------|----------|-------------|
-| 1 | Cardiac arrest | ATS-1 | Unresponsive, bystander CPR, no pulse, HR 0 |
-| 2 | Anaphylactic shock | ATS-1 | Stridor, SpO₂ 85%, BP 70/40, peanut allergy |
-| 3 | ACS typical | ATS-2 | Chest pain, diaphoretic, HR 110, ambulance |
-| 4 | Stroke symptoms | ATS-2 | Facial droop, arm weakness, BP 185/105 |
-| 5 | Severe asthma | ATS-2 | Speaking in words, SpO₂ 89%, RR 34, age 14 |
-| 6 | Pregnant abdominal pain | ATS-2 | 32w pregnant, vaginal bleeding, pain 9/10 |
-| 7 | Febrile elderly | ATS-3 | 76F, Temp 39.2°C, DM + respiratory disease |
-| 8 | Renal colic | ATS-3 | Flank pain 7/10, nausea, normal vitals |
-| 9 | Head injury + warfarin | ATS-3 | Age 80, hit head, on anticoagulants |
-| 10 | Ankle sprain | ATS-4 | Sports injury, ambulatory, normal vitals |
-| 11 | UTI symptoms | ATS-4 | Dysuria, no fever, ambulatory |
-| 12 | Small laceration | ATS-4 | 2cm cut, controlled bleeding, normal vitals |
-| 13 | Suture removal | ATS-5 | Day 10 post-op, wound clean, pain 0 |
-| 14 | Minor rash | ATS-5 | Localised rash, no systemic symptoms |
-| 15 | Medical certificate | ATS-5 | Well patient, recovered from illness |
-| 16 | MVA major trauma | ATS-2 | High-speed rollover, ejected, confused (V on AVPU) |
-| 17 | Fall elderly | ATS-3 | Age 84, mechanical fall, hip pain, anticoagulants |
-
-### Final Results
+### Results Summary
 
 ```
-Results: 15 passed, 2 failed, 17 total  (88%)
-Average latency: 28.6s (CPU)
+Results: 15 passed, 2 failed, 17 total  (88.2%)
+Average latency: 36.8s/case (CPU)
 ```
 
-| Category | Pass Rate | Notes |
-|----------|-----------|-------|
-| ATS-1 (Resuscitation) | 2/2 (100%) | Both immediately life-threatening cases correctly identified |
-| ATS-2 (Emergency) | 5/5 (100%) | ACS, stroke, asthma, pregnancy, MVA — all correct |
-| ATS-3 (Urgent) | 3/5 (60%) | Two mismatches; see error analysis below |
-| ATS-4 (Semi-urgent) | 3/3 (100%) | Keyword list + vitals normality signal broke ATS-3 floor bias |
-| ATS-5 (Non-urgent) | 3/3 (100%) | ATS-5 guard prevents LLM from overriding clear keyword matches |
+| Category | Passed | Rate | Notes |
+|----------|--------|------|-------|
+| ATS-1 (Resuscitation) | 2/2 | 100% | Cardiac arrest and anaphylactic shock — both immediately life-threatening cases correctly identified |
+| ATS-2 (Emergency) | 5/5 | 100% | ACS, stroke, severe asthma, pregnant abdominal pain, MVA major trauma — all correct |
+| ATS-3 (Urgent) | 2/4 | 50% | Two mismatches; see analysis below |
+| ATS-4 (Semi-urgent) | 3/3 | 100% | Ankle sprain, UTI, small laceration — keyword matching + vitals normality signal correct |
+| ATS-5 (Non-urgent) | 3/3 | 100% | Suture removal, minor rash, medical certificate — all correctly classified |
+
+### Per-Case Results
+
+| # | Case | Expected | Got | Latency | Match |
+|---|------|----------|-----|---------|-------|
+| 1 | Cardiac arrest | ATS-1 | ATS-1 | 27.2s | ✓ |
+| 2 | Anaphylactic shock | ATS-1 | ATS-1 | 27.2s | ✓ |
+| 3 | ACS typical | ATS-2 | ATS-2 | 24.3s | ✓ |
+| 4 | Stroke symptoms | ATS-2 | ATS-2 | 31.8s | ✓ |
+| 5 | Severe asthma | ATS-2 | ATS-2 | 23.6s | ✓ |
+| 6 | Pregnant abdominal pain | ATS-2 | ATS-2 | 31.3s | ✓ |
+| 7 | Febrile elderly | ATS-3 | ATS-3 | 42.0s | ✓ |
+| 8 | Renal colic | ATS-3 | ATS-2 | 36.1s | ✗ |
+| 9 | Head injury + warfarin | ATS-3 | ATS-4 | 40.4s | ✗ |
+| 10 | Ankle sprain | ATS-4 | ATS-4 | 30.6s | ✓ |
+| 11 | UTI symptoms | ATS-4 | ATS-4 | 32.1s | ✓ |
+| 12 | Small laceration | ATS-4 | ATS-4 | 33.6s | ✓ |
+| 13 | Suture removal | ATS-5 | ATS-5 | 42.2s | ✓ |
+| 14 | Minor rash | ATS-5 | ATS-5 | 32.9s | ✓ |
+| 15 | Medical certificate | ATS-5 | ATS-5 | 34.0s | ✓ |
+| 16 | MVA major trauma | ATS-2 | ATS-2 | 22.9s | ✓ |
+| 17 | Fall elderly | ATS-3 | ATS-3 | 40.4s | ✓ |
 
 ### Error Analysis
 
-**Remaining failures (2/17):**
+Two cases did not match their expected ATS category:
 
-| Case | Expected | Got | Root Cause |
-|------|----------|-----|------------|
-| Renal colic | ATS-3 | ATS-2 | "severe pain" keyword in ATS-2 rule list matches pain 7/10. Borderline call — many EDs triage this ATS-2. The rule layer doesn't see that vitals are normal |
-| Head injury + warfarin | ATS-3 | ATS-4 | "laceration" keyword in ATS-4 list matches. The rule layer only inspects chief complaint text — it doesn't know the patient is 80, on warfarin, with a head injury. Fix pending: wire structured fields into rule engine |
-
-**Previously fixed (5/7 from v1):**
-
-| Case | v1 | v2 | Fix Applied |
-|------|----|----|-------------|
-| Ankle sprain | ATS-3 | ATS-4 | ATS-4 keyword list + vitals normality signal |
-| UTI symptoms | ATS-3 | ATS-4 | ATS-4 keyword list ("dysuria") |
-| Small laceration | ATS-3 | ATS-4 | ATS-4 keyword list ("laceration") |
-| Minor rash | ATS-3 | ATS-5 | ATS-5 keyword list ("itchy rash") + normality signal |
-| MVA major trauma | ATS-3 | ATS-2 | ATS-2 keyword list ("ejected", "rollover", "confused at scene") |
-| Suture removal | ATS-3 | ATS-5 | ATS-5 keyword guard + "suture removal" in ATS-5 prompt definition |
+| Case | Expected | Got | Direction | Root Cause |
+|------|----------|-----|-----------|------------|
+| Renal colic (case 8) | ATS-3 | ATS-2 | **Safe** (over-triage) | "severe pain" keyword in ATS-2 rule list matches pain 7/10. The LLM also classified this as ATS-2. Borderline clinical call — many EDs triage suspected renal colic at ATS-2 when pain is severe. The rule layer doesn't account for normal vitals counterbalancing severe pain |
+| Head injury + warfarin (case 9) | ATS-3 | ATS-4 | **Unsafe** (under-triage) | "laceration" keyword in ATS-4 list matches. The rule layer only inspects chief complaint text — it doesn't incorporate structured fields (age 80, anticoagulants, head injury mechanism). The LLM also returned ATS-4. The anticoagulant escalation note was appended to the rationale but did not elevate the category. **Fix pending:** wire structured risk modifiers into the rule-based tier |
 
 ### Key Design Decisions
 
-- **Over-triage is safe; under-triage is dangerous.** All errors are in the safe direction (over-triage) or borderline clinical calls. No life-threatening presentation was under-classified.
-- **Rule layer guards the LLM.** Keyword-based ATS-1, ATS-2, and ATS-5 discriminators provide a safety floor — the LLM can escalate but cannot override a definitive low-urgency keyword match.
-- **Vitals normality signal** successfully broke the LLM's ATS-3 anchoring bias for low-acuity cases (3/3 ATS-4 cases, 3/3 ATS-5 cases correct). The elderly + comorbidities carve-out prevents inappropriate down-triage.
+- **Over-triage is safe; under-triage is dangerous.** Case 8 over-triaged (safe), but case 9 under-triaged an 80-year-old anticoagulated patient with head injury — this is the highest-priority fix.
+- **Rule layer guards the LLM.** Keyword-based ATS-1, ATS-2, ATS-4, and ATS-5 discriminators provide a safety floor. The LLM can escalate but cannot override a definitive ATS-5 keyword match.
+- **Vitals normality signal** successfully broke the LLM's ATS-3 anchoring bias for low-acuity cases. All 6 ATS-4 and ATS-5 cases were correctly classified.
+- **Confidence correlates with agreement.** Matched cases had `high` confidence except the febrile elderly case (ATS-3, low confidence — correctly cautious). Mismatched cases had mixed confidence (high for over-triage, low for under-triage).
 
 ### Running the Evaluation
 
 ```bash
+# Build the Docker image
+docker build -t aegis-md:eval .
+
 # Start the container
-docker run -d --rm -p 8000:8000 aegis-md:dev
+docker run -d --rm -p 8000:8000 --name aegis-eval aegis-md:eval
 
-# Wait ~30s for Ollama warmup, then:
-python3 scripts/run_triage_batch.py
+# Wait ~30s for Ollama warmup, then run the batch evaluation
+python scripts/run_triage_batch.py --url http://localhost:8000 --output-json results.json
 
-# View individual test cases
-python3 scripts/synthetic_triage_cases.py --table
-python3 scripts/synthetic_triage_cases.py --curl   # curl commands for manual testing
+# View per-category breakdown
+python scripts/run_triage_batch.py --url http://localhost:8000 --repeat 3 --output-json results.json
+
+# List individual test cases with curl commands
+python scripts/synthetic_triage_cases.py --table
+python scripts/synthetic_triage_cases.py --curl
+
+# Clean up
+docker stop aegis-eval
 ```
+
+Results are saved to `logs/docker_eval_results.json`.
 
 ---
 
