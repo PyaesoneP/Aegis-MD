@@ -1,4 +1,4 @@
-import type { TriageRequest, TriageResponse } from '../types/triage'
+import type { TriageFormData, TriageResponse } from '../types/triage'
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? 'http://localhost:8000'
@@ -11,7 +11,6 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly payload: unknown,
-    /** The full URL that was called (for debugging). */
     public readonly url?: string,
   ) {
     super(message)
@@ -69,25 +68,43 @@ export async function diagnose(): Promise<string> {
 }
 
 export async function submitTriage(
-  request: TriageRequest,
+  formData: TriageFormData,
 ): Promise<TriageResponse> {
   const url = triageUrl()
-  const formData = new FormData()
-  formData.append('symptoms', request.symptoms)
+  const fd = new FormData()
 
-  if (request.patientContext) {
-    formData.append('patient_context', JSON.stringify(request.patientContext))
-  }
+  // Required fields
+  fd.append('chief_complaint', formData.chief_complaint)
+  fd.append('age', String(formData.age))
+  fd.append('sex', formData.sex)
+  fd.append('pain_score', String(formData.pain_score))
 
-  if (request.image) {
-    formData.append('image', request.image)
-  }
+  // Vitals as JSON
+  fd.append('vitals', JSON.stringify(formData.vitals))
+
+  // Contextual fields (only send if provided)
+  if (formData.onset) fd.append('onset', formData.onset)
+  if (formData.arrival_mode) fd.append('arrival_mode', formData.arrival_mode)
+  if (formData.consciousness) fd.append('consciousness', formData.consciousness)
+  if (formData.mechanism) fd.append('mechanism', formData.mechanism)
+
+  // Comorbidities as JSON
+  fd.append('comorbidities', JSON.stringify(formData.comorbidities))
+
+  // Pregnancy
+  if (formData.pregnancy) fd.append('pregnancy', formData.pregnancy)
+
+  // Allergies
+  if (formData.allergies) fd.append('allergies', formData.allergies)
+
+  // Image
+  if (formData.image) fd.append('image', formData.image)
 
   let response: Response
   try {
     response = await fetch(url, {
       method: 'POST',
-      body: formData,
+      body: fd,
       signal: AbortSignal.timeout(TRIAGE_TIMEOUT_MS),
     })
   } catch (err: unknown) {
@@ -100,40 +117,24 @@ export async function submitTriage(
         url,
       )
     }
-    // Network errors include CORS blocks, DNS failures, connection refused.
-    const hint = isUsingFallbackUrl
-      ? ' The app is using the fallback URL (localhost). Set VITE_API_BASE_URL for production.'
-      : ''
     throw new ApiError(
-      `Cannot reach ${url}. Check your connection and try again.${hint}`,
+      `Network error connecting to ${url}: ${err instanceof Error ? err.message : String(err)}`,
       0,
       null,
       url,
     )
   }
 
-  // Handle non-JSON responses gracefully.
-  let payload: unknown
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('json')) {
-    payload = await response.json()
-  } else {
-    const text = await response.text().catch(() => '')
-    payload = text.slice(0, 500)
-  }
+  const body = await response.json()
 
   if (!response.ok) {
-    const detail =
-      typeof payload === 'object' && payload !== null && 'detail' in payload
-        ? String((payload as Record<string, unknown>).detail)
-        : ''
     throw new ApiError(
-      `Triage request failed (${response.status}): ${detail || 'Unknown error'}`,
+      body?.error ?? `Request failed with status ${response.status}`,
       response.status,
-      payload,
+      body,
       url,
     )
   }
 
-  return payload as TriageResponse
+  return body as TriageResponse
 }
