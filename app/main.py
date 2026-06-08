@@ -3,7 +3,7 @@ import time
 import uuid
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import ValidationError
@@ -156,13 +156,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ── Health ───────────────────────────────────────────────────────
     @app.get("/health", response_model=HealthResponse)
-    async def health(request: Request) -> HealthResponse:
+    async def health(
+        request: Request,
+        readiness: Annotated[bool | None, Query()] = None,
+    ) -> HealthResponse:
         client_ip = get_client_ip(request)
         if not request.app.state.health_limiter.allow(client_ip):
             return JSONResponse(status_code=429, content={"error": "Too many requests"})
 
         text_model_status, text_model_detail = _check_ollama_health()
         retrieval_status, retrieval_detail = _check_retrieval_health(settings)
+
+        # ── Readiness probe: return 503 until all critical deps are ok ──
+        if readiness:
+            critical_ok = text_model_status == "ok"
+            if not critical_ok:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "not_ready",
+                        "text_model": text_model_status,
+                        "detail": text_model_detail,
+                    },
+                )
+
         return HealthResponse(
             status="ok",
             components={

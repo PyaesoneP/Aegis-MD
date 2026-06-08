@@ -4,7 +4,9 @@ FROM ollama/ollama:latest
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    OLLAMA_MODELS=/app/ollama_models
+    OLLAMA_MODELS=/app/ollama_models \
+    OLLAMA_KV_CACHE_TYPE=q8_0 \
+    OLLAMA_FLASH_ATTENTION=true
 
 # ── Install Python 3.12 ─────────────────────────────────────────────
 # Ubuntu version varies; deadsnakes PPA covers both 22.04 and 24.04.

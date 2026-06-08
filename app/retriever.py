@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ class RetrievedGuideline:
         return f"{source_name} p.{self.page_number}"
 
 
+@lru_cache(maxsize=1)
 def get_guideline_collection(
     chroma_path: str | None = None,
     collection_name: str | None = None,
