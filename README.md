@@ -20,7 +20,7 @@ Upload a symptom description (and optionally a skin-lesion image) to receive an 
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~25s. The live Cloud Run deployment below is CPU-only and takes 2-3 minutes on cold start.*
 
-> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. With an L4 GPU the same pipeline completes in ~46s, and with a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
+> **Why is it slow?** This is a student portfolio project running on a **$0 budget**. The LLM (MedGemma 4B) runs on Cloud Run's CPU-only tier because GPU instances require a paid quota increase. With an L4 GPU the same pipeline completes in ~25-30s (text-only) or ~30-40s (with vision), and with a cloud-hosted inference API it would be sub-second. The latency is a **cost constraint, not an architectural limitation** — the RAG pipeline, security gateway, and multimodal fusion are designed for production throughput.
 
 To debug connectivity issues, open the browser DevTools console and run:
 ```js
@@ -35,7 +35,7 @@ Aegis-MD is a **minimum viable prototype (MVP)** of a multimodal clinical triage
 
 - **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK). The current corpus is limited to 5 documents — a production system would index orders of magnitude more sources across specialties.
 - **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL` and can be replaced with another Ollama-compatible model or an on-disk GGUF runtime.
-- **Computer Vision** risk stratification using the same Ollama-hosted multimodal model (MedGemma) for image analysis, with structured findings fed back into the text triage prompt for holistic urgency classification
+- **Computer Vision** risk stratification using the same Ollama-hosted multimodal model (MedGemma), running in parallel with text triage for lower latency; urgency levels are merged programmatically and findings are appended verbatim — the text LLM never sees vision output, eliminating hallucination risk
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging
 - **Production Observability** via Prometheus metrics and a lightweight monitoring dashboard
 
@@ -60,16 +60,16 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK). The guideline corpus is intentionally small for this MVP — a production system would index hundreds of peer-reviewed sources across multiple languages and specialties.
 - Classifies urgency into 4 tiers: `Emergency`, `Urgent`, `Routine`, `Self-Care`
 - Returns structured rationale, source citations, and a mandatory medical disclaimer
-- **Latency:** ~2-3 min cold start, ~25-30s warm on 4 vCPU (CPU-only); ~46s warm on L4 GPU. The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference and would be significantly faster on provisioned hardware.
+- **Latency:** ~2-3 min cold start, ~25-30s warm on 4 vCPU (CPU-only); ~14s warm on local GPU, ~30s on L4 GPU. Vision+text requests run vision and text in parallel (~25s vision + ~14s text concurrently ≈ ~25s total). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference and would be significantly faster on provisioned hardware.
 
 ###  Vision Risk Stratification
 - Optional image upload (JPEG/PNG, max 5 MB)
 - **MedGemma multimodal model** (same Ollama instance as text triage) for image analysis
 - Classifies risk into three tiers: `High-Risk`, `Low-Risk`, `insufficient confidence`
 - Confidence scored as a float (0.0–1.0) with structured rationale
-- Vision findings are passed into the text triage LLM prompt, enabling the urgency classification to incorporate visual evidence
-- Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled
-- **Latency:** ~60s warm on GPU (two LLM calls); not recommended on CPU-only
+- Vision and text triage run **in parallel** via `asyncio.gather`; urgency levels are merged programmatically and findings are structured into labelled sections with no LLM rewriting — zero hallucination risk from cross-model contamination
+- Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled (text triage still returns independently)
+- **Latency:** ~30s warm on GPU (parallel calls, ~25s vision + ~14s text running concurrently); ~50-60s on CPU-only
 
 ###  Security Gateway
 - **Defense-in-depth** pipeline intercepts all inputs **before** they reach the LLM
@@ -264,7 +264,7 @@ docker run -p 8000:8000 asia-southeast1-docker.pkg.dev/aegis-md/aegismd/backend:
 
 Cloud Run uses the container `PORT` environment variable automatically; the Docker image starts `uvicorn app.main:app` on that port via `scripts/entrypoint.sh`.
 
-> **Note:** The image is ~12 GB (includes Ollama + CUDA runtime + Q4 model). CPU-only inference yields ~25-30s warm latency. For lower latency, attach an L4 GPU (`--gpu 1 --gpu-type nvidia-l4`).
+> **Note:** The image is ~7 GB (includes Ollama + CUDA runtime + Q4 model). CPU-only inference yields ~25-30s warm latency (text-only) or ~50-60s (with vision). For lower latency, attach an L4 GPU (`--gpu 1 --gpu-type nvidia-l4`) where vision+text runs in ~30s via parallel execution.
 
 ### Deploy to Google Cloud Run (CPU-only)
 ```bash
@@ -385,7 +385,7 @@ Lightweight HTML monitoring dashboard.
 - **Mandatory disclaimer:** Every response includes a clear statement that this is not a substitute for professional medical advice.
 - **Guardrails:** The LLM is constrained to 4 urgency tiers via structured prompting. The security gateway blocks known jailbreak attempts.
 - **Known limitations:**
-  - The LLM can hallucinate. The RAG layer grounds it in guideline text, but errors are possible.
+  - The LLM can hallucinate. The RAG layer grounds it in guideline text, and the system prompt includes explicit anti-hallucination rules (only cite guidelines directly relevant to stated symptoms; never introduce unstated conditions). Vision findings are appended verbatim — the text LLM never sees them, eliminating cross-model hallucination.
   - The vision model uses the same Ollama instance as the text triage model. Its output is constrained to specific risk labels (`High-Risk`, `Low-Risk`, `insufficient confidence`) and a 0-1 float confidence score. While it processes general medical images, its performance may vary depending on the image type and quality.
   - The security filter uses scored regex heuristics with Unicode defense — effective against common attacks but novel ML-based jailbreaks may still bypass it.
   - English language only in the MVP.
