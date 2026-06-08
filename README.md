@@ -51,7 +51,7 @@ A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom d
 
 ![Aegis-MD Demo — ATS-1 cardiac arrest triage](./assets/aegis-MD_ats_1.gif)
 
-*ATS-1 (Resuscitation): cardiac arrest detected correctly, triage card returned with immediate time target — GPU inference in ~2s.*
+*ATS-1 (Resuscitation): severe asthma detected correctly, triage card returned with immediate time target — GPU inference in ~2s.*
 
 ![Aegis-MD Demo — ATS-3 febrile elderly triage](./assets/aegis-MD_ats_3.gif)
 
@@ -59,7 +59,7 @@ A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom d
 
 ![Aegis-MD Demo — vision risk stratification](./assets/aegis-MD_vision.gif)
 
-*Vision: skin lesion image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
+*Vision: head injury image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
@@ -145,9 +145,9 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **Output safety**: response fields truncated to configurable max lengths to prevent unbounded LLM output
 - Security events logged with rotation (JSONL) + Prometheus counters `aegis_security_blocked_total` and `aegis_security_warned_total`
 
-![Prompt injection blocked — DAN/jailbreak attack returns 400](./assets/aegis-MD_attack_1.gif)
+![Prompt injection blocked — roleplay/override returns 400](./assets/aegis-MD_attack_1.gif)
 
-*Prompt injection blocked: a classic DAN/jailbreak attack hits the scored-heuristics gateway and returns HTTP 400 before reaching the LLM.*
+*Prompt injection blocked: a classic roleplay/override attack hits the scored-heuristics gateway and returns HTTP 400 before reaching the LLM.*
 
 ![Unicode defense — homoglyph evasion neutralized](./assets/aegis-MD_attack_2.gif)
 
