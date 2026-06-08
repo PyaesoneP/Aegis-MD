@@ -343,6 +343,50 @@ The evaluation framework uses 17 synthetic ED triage cases (`scripts/synthetic_t
 
 ---
 
+##  CI/CD
+
+GitHub Actions enforces quality gates on every push and pull request.
+
+### Backend CI (`backend-ci.yml`)
+
+Triggered on pushes to `main` and `dev/**` branches, and all PRs touching backend code.
+
+| Job | What it does | Gates |
+|-----|-------------|-------|
+| **lint** | `ruff check app/ tests/` — fast Python linting (unused imports, style, logic errors) | Must pass |
+| **test** | `pytest tests/ -v --cov=app --cov-fail-under=70` — full test suite with coverage enforcement | Must pass; depends on lint |
+| *(docker-build)* | *Skipped in CI — requires pre-downloaded Ollama model files (~3.4 GB) that are gitignored. See [Docker Deployment](#-docker-deployment) for local build instructions.* | — |
+
+Test results are uploaded as JUnit XML artifacts on every run.
+
+### Frontend CI (`frontend-pages.yml`)
+
+Triggered on pushes to `main` and `dev/**` branches, and all PRs touching frontend code.
+
+| Job | What it does | Gates |
+|-----|-------------|-------|
+| **lint** | `npm run lint` (eslint) | Must pass |
+| **test** | `npx vitest --run` — 56 component, hook, and utility tests | Must pass; depends on lint |
+| **build** | `npm run build` — production Vite build | Must pass; depends on test |
+| **deploy** | Deploy to GitHub Pages | Only on `main`; depends on build |
+
+The `deploy` job runs exclusively on the `main` branch — PR and dev branch builds verify correctness without publishing.
+
+### Path Filters
+
+Both workflows use precise path filters to avoid unnecessary runs:
+
+- Backend CI triggers on: `app/**`, `tests/**`, `scripts/**`, `requirements.txt`, `pytest.ini`, `main.py`, `Dockerfile`
+- Frontend CI triggers on: `frontend/**`
+
+### Required Checks
+
+For PRs targeting `main`, the following must pass before merging:
+- Backend: `lint` + `test` 
+- Frontend: `lint` + `test` + `build`
+
+---
+
 ##  Docker Deployment
 
 Docker is used for the public Cloud Run demo and can also run locally with GPU passthrough via `nvidia-container-toolkit`. **For the simplest local setup, run directly with Ollama** (see Quick Start above).
