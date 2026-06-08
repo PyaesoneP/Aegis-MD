@@ -49,7 +49,17 @@
 
 A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom description to receive an informational triage urgency suggestion. **This is a demo — the intended architecture runs entirely on local hardware with zero data leaving the machine.** Cold-start requests take 2-3 minutes, warm requests ~30s. The frontend client has a 10-minute timeout to accommodate this.
 
-![Aegis-MD Demo](./assets/Aegis-MD.gif)
+![Aegis-MD Demo — ATS-1 cardiac arrest triage](./assets/aegis-MD_ats_1.gif)
+
+*ATS-1 (Resuscitation): cardiac arrest detected correctly, triage card returned with immediate time target — GPU inference in ~2s.*
+
+![Aegis-MD Demo — ATS-3 febrile elderly triage](./assets/aegis-MD_ats_3.gif)
+
+*ATS-3 (Urgent): febrile elderly patient with comorbidities correctly classified, RAG citations and structured rationale returned.*
+
+![Aegis-MD Demo — vision risk stratification](./assets/aegis-MD_vision.gif)
+
+*Vision: skin lesion image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
@@ -112,7 +122,11 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - Vision and text triage run **in parallel** via `asyncio.gather`; urgency levels are merged programmatically and findings are structured into labelled sections with no LLM rewriting — eliminates cross-model contamination risk (the text LLM never sees vision output)
 - Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled (text triage still returns independently)
 - **Latency:** ~8-10s on RTX 5070 Ti Mobile (parallel vision + text); ~50-60s on Cloud Run CPU-only
-- ** Unevaluated:** Vision risk stratification has no quantitative accuracy results. A 4B quantized multimodal model classifying wounds and rashes as High/Low-Risk is unlikely to be clinically meaningful without validation. This component is experimental — treat findings as illustrative only.
+- **⚠️ Unevaluated:** Vision risk stratification has no quantitative accuracy results. A 4B quantized multimodal model classifying wounds and rashes as High/Low-Risk is unlikely to be clinically meaningful without validation. This component is experimental — treat findings as illustrative only.
+
+![Vision risk stratification](./assets/aegis-MD_vision.gif)
+
+*Vision risk stratification: a head injury image is uploaded alongside text triage data. The vision model returns a risk tier and confidence score in parallel; results are merged programmatically with text triage output.*
 
 ###  Security Gateway
 
@@ -131,11 +145,11 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **Output safety**: response fields truncated to configurable max lengths to prevent unbounded LLM output
 - Security events logged with rotation (JSONL) + Prometheus counters `aegis_security_blocked_total` and `aegis_security_warned_total`
 
-![Prompt injection blocked — DAN/jailbreak attack returns 400](./assets/security-injection-blocked.gif)
+![Prompt injection blocked — DAN/jailbreak attack returns 400](./assets/aegis-MD_attack_1.gif)
 
 *Prompt injection blocked: a classic DAN/jailbreak attack hits the scored-heuristics gateway and returns HTTP 400 before reaching the LLM.*
 
-![Unicode defense — homoglyph evasion neutralized](./assets/security-unicode-defense.gif)
+![Unicode defense — homoglyph evasion neutralized](./assets/aegis-MD_attack_2.gif)
 
 *Unicode defense: Cyrillic and Fullwidth homoglyph substitutions designed to evade naive regex are remapped to ASCII by NFKC normalization, then caught by the same patterns.*
 
