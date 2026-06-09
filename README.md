@@ -59,7 +59,7 @@ A public showcase deployment running on Cloud Run (CPU-only). Upload a symptom d
 
 ![Aegis-MD Demo — vision risk stratification](./assets/aegis-MD_vision.gif)
 
-*Vision: head injury image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
+*Vision: X-ray image uploaded alongside text triage; vision model returns risk tier and confidence in parallel, merged into the final assessment.*
 
 *The demo above was recorded locally with an RTX 5070 Ti Mobile (12 GB VRAM) — triage completes in ~2–3s. The live Cloud Run deployment is CPU-only and takes 2-3 minutes on cold start.*
 
@@ -126,7 +126,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ![Vision risk stratification](./assets/aegis-MD_vision.gif)
 
-*Vision risk stratification: a head injury image is uploaded alongside text triage data. The vision model returns a risk tier and confidence score in parallel; results are merged programmatically with text triage output.*
+*Vision risk stratification: an X-ray image is uploaded alongside text triage data. The vision model returns a risk tier and confidence score in parallel; results are merged programmatically with text triage output.*
 
 ###  Security Gateway
 
