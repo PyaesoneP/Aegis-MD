@@ -162,7 +162,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **File:** `RCEM_Best_Practice_Invasive_Procedures_in_the_Emergency_Department.pdf`
 - **Note:** Reference for procedural guidance in ED settings.
 
-### 15. Singapore MOH Clinical Practice Guidelines
+### 14. Singapore MOH Clinical Practice Guidelines
 - **Source URL:** https://www.moh.gov.sg/hpp/doctors/guidelines/cpg_medical
 - **Publisher:** Ministry of Health, Singapore
 - **Published:** 2017
@@ -173,7 +173,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **File:** `5506cpg1.pdf`
 - **Note:** General CPG framework document. Specific guideline scope should be verified from PDF title page.
 
-### 16. Singapore MOH Hypertension Guidelines
+### 15. Singapore MOH Hypertension Guidelines
 - **Source URL:** http://www.smj.org.sg/sites/default/files/07_CPG-298122017_Hypertension.pdf
 - **Publisher:** Ministry of Health, Singapore (published in Singapore Med J, 2018)
 - **Published:** 2017 (executive summary published SMJ 2018;59(1):17-27)
@@ -184,7 +184,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **File:** `MOH-Clinical-Practice-Guidelines-Hypertension.pdf`
 - **Note:** Second edition of MOH hypertension CPG. Newer ACE guideline available at ace-hta.gov.sg.
 
-### 17. STI Guidelines 2021
+### 16. STI Guidelines 2021
 - **Source URL:** https://www.cdc.gov/std/treatment-guidelines/STI-Guidelines-2021.pdf
 - **Publisher:** U.S. Centers for Disease Control and Prevention (CDC)
 - **Published:** July 23, 2021
@@ -195,7 +195,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **File:** `STI-Guidelines-2021.pdf`
 - **Note:** Comprehensive STI treatment guidelines covering gonorrhea, chlamydia, syphilis, trichomoniasis, and more. MMWR Recomm Rep 2021;70(4):1-187.
 
-### 18. NHLBI Asthma EPR-3 Guidelines
+### 17. NHLBI Asthma EPR-3 Guidelines
 - **Source URL:** https://www.nhlbi.nih.gov/guidelines/asthma
 - **Publisher:** U.S. National Institutes of Health (NHLBI)
 - **Published:** 2007
@@ -206,11 +206,11 @@ This file records the official source URLs, license terms, and citation labels f
 - **File:** `EPR-3_Asthma_Full_Report_2007.pdf`
 - **Note:** Respiratory triage context.
 
-### 19. Pediatrics Guidelines
+### 18. Pediatrics Guidelines (ACEP Clinical Policy — Fever in Children)
 - **Source URL:** https://www.acep.org/siteassets/uploads/uploaded-files/acep/clinical-and-practice-management/clinical-policies/pediatrics.pdf
 - **Publisher:** American College of Emergency Physicians (ACEP), published in Annals of Emergency Medicine
 - **Published:** 2003 (Ann Emerg Med. 2003;42:530-545; doi:10.1067/mem.2003.377)
-- **Citation Label:** Pediatrics Guidelines
+- **Citation Label:** ACEP Pediatric Fever
 - **License:** ACEP clinical policy — ACEP copyright; research use permitted
 - **Status:** Active; revised edition "Fever - Infants and Children Younger than 2 Years" in review
 - **Verified:** PDF downloads directly from ACEP
@@ -253,7 +253,7 @@ This file records the official source URLs, license terms, and citation labels f
 | CC BY 3.0 AU | ETEK 2nd Ed | Yes |
 | CC BY-NC-SA 3.0 IGO | WHO BEC, WHO IITT, WHO Hospital Care Children, WHO IMAI Hospital Care | Yes (non-commercial) |
 | OGL v3.0 | NICE Head Injury NG232 | Yes |
-| ACEP/ENA policy | ACEP/ENA Triage Policy, ESI Handbook, Pediatrics Guidelines | Internal/research |
+| ACEP/ENA policy | ACEP/ENA Triage Policy, ESI Handbook, ACEP Pediatric Fever | Internal/research |
 | Public Domain | NHLBI Asthma EPR-3, STI Guidelines 2021 (CDC) | Yes |
 | NHS/GIRFT open | Six to Help Acute Medicine | Yes |
 | NF open access | Haemophilia Emergency Management | Yes |

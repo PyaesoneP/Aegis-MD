@@ -1,0 +1,11 @@
+# Ruff configuration.
+#
+# The rule set is pinned explicitly so linting is reproducible across ruff
+# releases. Newer ruff versions have expanded their implicit defaults (isort,
+# line-length, etc.); without an explicit `select` an unpinned `pip install
+# ruff` in CI can start failing on unchanged code. These are the classic
+# defaults the codebase was authored against.
+target-version = "py312"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

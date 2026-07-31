@@ -119,7 +119,7 @@ DOCUMENT_REGISTRY: dict[str, dict] = {
     },
     "pediatrics": {
         "tier": "tier_3",
-        "citation_label": "Pediatrics Guidelines",
+        "citation_label": "ACEP Pediatric Fever",
         "source_url": "https://www.acep.org/siteassets/uploads/uploaded-files/acep/clinical-and-practice-management/clinical-policies/pediatrics.pdf",
         "publication_year": 2003,
     },

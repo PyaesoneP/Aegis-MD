@@ -43,7 +43,7 @@ PDF files in this directory are **not committed to GitHub**. Redistribution righ
 | `RCEM_Best_Practice_Invasive_Procedures_in_the_Emergency_Department.pdf` | 404 KB | RCEM, 2024 | RCEM Invasive Procedures | RCEM | Active |
 | `9789241548373_eng.pdf` | — | WHO SEARO, 2021 | WHO IMAI Hospital Care | CC BY-NC-SA 3.0 IGO | Active |
 | `pocket_booklet_hospital_care_0.pdf` | 11 MB | WHO, 2nd Ed | WHO Hospital Care Children | CC BY-NC-SA | Active |
-| `pediatrics.pdf` | — | ACEP, 2003 (Ann Emerg Med) | Pediatrics Guidelines | ACEP Policy | Active |
+| `pediatrics.pdf` | — | ACEP, 2003 (Ann Emerg Med) | ACEP Pediatric Fever | ACEP Policy | Active |
 | `5506cpg1.pdf` | 310 KB | Singapore MOH, 2017 | MOH CPG General | SG govt pub. | Active |
 | `MOH-Clinical-Practice-Guidelines-Hypertension.pdf` | 714 KB | Singapore MOH/SMJ, 2017 | MOH Hypertension | SG govt pub. | Active |
 | `STI-Guidelines-2021.pdf` | 4.3 MB | CDC, 2021 | STI Guidelines 2021 | Public Domain | Active |

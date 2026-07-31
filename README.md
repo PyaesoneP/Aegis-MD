@@ -78,7 +78,7 @@ Aegis-MD is an **ED Triage Console** — a multimodal clinical triage agent desi
 
 - **Structured ED triage intake** capturing what a triage nurse collects in 2–5 minutes: chief complaint (150 char), vital signs (HR, RR, SpO₂, Temp, BP), pain score (0–10), onset, arrival mode, consciousness (AVPU), mechanism, and risk modifiers (comorbidities, pregnancy, allergies). Optional image upload for wounds/rashes.
 - **ATS 1–5 classification** using the Australasian Triage Scale, with time-to-treatment targets (ATS-1 = immediate, ATS-2 = 10 min, ATS-3 = 30 min, ATS-4 = 60 min, ATS-5 = 120 min) and colour-coded triage cards.
-- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). The corpus spans 19 documents across 3 tiers: triage-specific frameworks (Tier 1), ED-relevant specialty guidelines (Tier 2), and supplementary references (Tier 3). A production system would index orders of magnitude more sources across specialties.
+- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). The corpus spans 18 documents across 3 tiers: triage-specific frameworks (Tier 1), ED-relevant specialty guidelines (Tier 2), and supplementary references (Tier 3). A production system would index orders of magnitude more sources across specialties.
 - **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 4B by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL`. Per its [official model card](https://huggingface.co/google/medgemma-1.5-4b-it), MedGemma "is not intended to be used without appropriate validation, adaptation, and/or making meaningful modification" — it's a research starting point, not a clinical tool. The model achieves 69.1% on MedQA and was trained on chest X-rays, dermatology, histopathology, ophthalmology, CT, MRI, and medical text — notably, it was **not** evaluated on ED triage tasks.
 - **Computer Vision** risk stratification using the same Ollama-hosted multimodal model, running in parallel with text triage; urgency levels are merged programmatically and findings are appended verbatim — eliminates cross-model contamination risk (the text LLM never sees vision output, and vice versa). **Note: vision accuracy is unevaluated** — no quantitative results are available for image-based risk stratification.
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging — a demonstration of defense-in-depth techniques rather than a load-bearing production control
@@ -705,7 +705,7 @@ docker stop aegis-eval
 - **Known limitations:**
   - The LLM can hallucinate. The RAG layer grounds it in guideline text, and the system prompt includes explicit anti-hallucination rules (only cite guidelines directly relevant to stated symptoms; never introduce unstated conditions). Vision findings are appended verbatim — the text LLM never sees them, which eliminates cross-model contamination but does not prevent the vision model itself from hallucinating visual findings.
   - **Vision is unevaluated.** The vision component has zero quantitative accuracy results. A 4B quantized multimodal model doing High/Low-Risk stratification on wounds and rashes is almost certainly not clinically meaningful without validation against a labelled dataset (e.g., HAM10000 for skin lesions). The vision output is constrained to specific risk labels, but the underlying model performance is unmeasured.
-  - **RAG over a 19-document corpus is limited.** With top_k=3 (top_k=1 on Cloud Run), retrieval over a corpus spanning triage-specific frameworks (Tier 1), specialty guidelines (Tier 2), and supplementary references (Tier 3) may still surface background that isn't directly about urgency classification. A basic retrieval quality check exists (`tests/eval/test_retrieval_quality.py`) that verifies tier_1/tier_2 documents surface for known clinical presentations, but full relevance scoring (MRR/nDCG) is not yet implemented. Citations are provided for explainability.
+  - **RAG over an 18-document corpus is limited.** With top_k=3 (top_k=1 on Cloud Run), retrieval over a corpus spanning triage-specific frameworks (Tier 1), specialty guidelines (Tier 2), and supplementary references (Tier 3) may still surface background that isn't directly about urgency classification. A basic retrieval quality check exists (`tests/eval/test_retrieval_quality.py`) that verifies tier_1/tier_2 documents surface for known clinical presentations, but full relevance scoring (MRR/nDCG) is not yet implemented. Citations are provided for explainability.
   - The security filter uses scored regex heuristics with Unicode defense — a demonstration of defense-in-depth patterns, not a bypass-proof control. Regex blocklists are bypassable by construction, and novel ML-based jailbreaks may still succeed.
   - **The underlying model (MedGemma 1.5 4B) has not been evaluated or optimized for ED triage.** Its official benchmarks are on radiology, dermatology, pathology, ophthalmology, and medical exam QA (MedQA: 69.1%, MedMCQA: 59.8%). The model card notes it "may make it more sensitive to the specific prompt used" — triage performance is likely prompt-dependent in ways not yet measured.
   - English language only in the MVP.
@@ -735,13 +735,14 @@ Triage logic is grounded in the following publicly available clinical guidelines
 ### Tier 3 — Supplementary Guidelines
 11. **WHO Pocket Book of Hospital Care for Children, 2nd Edition** — WHO, 2013 (CC BY-NC-SA 3.0 IGO)
 12. **WHO IMAI — District Clinician Manual: Hospital Care for Adults** — WHO SEARO, 2021
-13. **WHO ETAT — Emergency Triage Assessment and Treatment** — WHO, 2017 (superseded by IITT)
-14. **RCEM Best Practice — Invasive Procedures in the ED** — 2024
-15. **NHLBI Guidelines for the Diagnosis and Management of Asthma (EPR-3)** — NHLBI, 2007 (Public Domain)
-16. **Singapore MOH Clinical Practice Guidelines** — Ministry of Health, Singapore
-17. **MOH Clinical Practice Guidelines: Hypertension (2017)** — Ministry of Health, Singapore
-18. **STI Guidelines 2021** — Local corpus
-19. **Pediatrics Guidelines** — Local corpus
+13. **RCEM Best Practice — Invasive Procedures in the ED** — 2024
+14. **NHLBI Guidelines for the Diagnosis and Management of Asthma (EPR-3)** — NHLBI, 2007 (Public Domain)
+15. **Singapore MOH Clinical Practice Guidelines** — Ministry of Health, Singapore
+16. **MOH Clinical Practice Guidelines: Hypertension (2017)** — Ministry of Health, Singapore
+17. **STI Guidelines 2021** — CDC, 2021 (Public Domain)
+18. **ACEP Clinical Policy — Fever in Children <3y** — ACEP, 2003
+
+> **WHO ETAT** (`participant_manual.pdf`) was removed as superseded by WHO IITT (2020).
 
 ---
 

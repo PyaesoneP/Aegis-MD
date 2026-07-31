@@ -15,13 +15,19 @@ class RetrievedGuideline:
     content: str
     source: str
     page_number: int | str | None
+    citation_label: str | None = None
+    source_url: str | None = None
 
     @property
     def citation(self) -> str:
-        source_name = Path(self.source).name if self.source else "Unknown source"
-        if self.page_number is None:
-            return source_name
-        return f"{source_name} p.{self.page_number}"
+        # Prefer the curated citation label emitted by chunk.py; fall back to
+        # the raw filename for chunks indexed without enriched metadata.
+        label = self.citation_label or (
+            Path(self.source).name if self.source else "Unknown source"
+        )
+        if self.page_number is None or self.page_number == -1:
+            return label
+        return f"{label} p.{self.page_number}"
 
 
 @lru_cache(maxsize=1)
@@ -74,6 +80,8 @@ def retrieve_relevant_guidelines(
                 content=str(document),
                 source=str(metadata.get("source", "Unknown source")),
                 page_number=metadata.get("page_number"),
+                citation_label=metadata.get("citation_label"),
+                source_url=metadata.get("source_url"),
             )
         )
 
