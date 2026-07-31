@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -373,7 +372,7 @@ def print_all(base_url: str = "http://localhost:8000") -> None:
         print(f"  {case.name}")
         print(f"  Expected: {case.expected_ats}  |  {case.description}")
         print(f"{'=' * 72}")
-        print(f"\n  Python:\n")
+        print("\n  Python:\n")
         for line in case.python_snippet(base_url).splitlines():
             print(f"    {line}")
         print(f"\n  curl:\n    {case.curl_command(base_url)}")
