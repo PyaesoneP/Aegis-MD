@@ -43,7 +43,7 @@
 
 ---
 
-##  Live Demo
+## Live Demo
 
 **[Try the live demo →](https://pyaesonep.github.io/Aegis-MD/)**
 
@@ -72,13 +72,13 @@ import('/assets/index.js').then(m => m.diagnose().then(console.log))
 
 ---
 
-##  Overview
+## Overview
 
 Aegis-MD is an **ED Triage Console** — a multimodal clinical triage agent designed for the Emergency Department. It combines:
 
 - **Structured ED triage intake** capturing what a triage nurse collects in 2–5 minutes: chief complaint (150 char), vital signs (HR, RR, SpO₂, Temp, BP), pain score (0–10), onset, arrival mode, consciousness (AVPU), mechanism, and risk modifiers (comorbidities, pregnancy, allergies). Optional image upload for wounds/rashes.
 - **ATS 1–5 classification** using the Australasian Triage Scale, with time-to-treatment targets (ATS-1 = immediate, ATS-2 = 10 min, ATS-3 = 30 min, ATS-4 = 60 min, ATS-5 = 120 min) and colour-coded triage cards.
-- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK). The current corpus is limited to 5 documents — a production system would index orders of magnitude more sources across specialties.
+- **Retrieval-Augmented Generation (RAG)** over open-source medical guidelines (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). The corpus spans 19 documents across 3 tiers: triage-specific frameworks (Tier 1), ED-relevant specialty guidelines (Tier 2), and supplementary references (Tier 3). A production system would index orders of magnitude more sources across specialties.
 - **Lightweight LLM inference** via a local Ollama-hosted research model (MedGemma-1.5 4B by default) for RAG-enabled, safety-focused triage. The model reference is configurable via `Aegis_LLM_MODEL`. Per its [official model card](https://huggingface.co/google/medgemma-1.5-4b-it), MedGemma "is not intended to be used without appropriate validation, adaptation, and/or making meaningful modification" — it's a research starting point, not a clinical tool. The model achieves 69.1% on MedQA and was trained on chest X-rays, dermatology, histopathology, ophthalmology, CT, MRI, and medical text — notably, it was **not** evaluated on ED triage tasks.
 - **Computer Vision** risk stratification using the same Ollama-hosted multimodal model, running in parallel with text triage; urgency levels are merged programmatically and findings are appended verbatim — eliminates cross-model contamination risk (the text LLM never sees vision output, and vice versa). **Note: vision accuracy is unevaluated** — no quantitative results are available for image-based risk stratification.
 - **Security Gateway** with prompt-injection detection, rate limiting, and anomaly logging — a demonstration of defense-in-depth techniques rather than a load-bearing production control
@@ -97,24 +97,24 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ---
 
-##  Architecture
+## Architecture
 
 ![Aegis-MD Architecture](./assets/architecture.png)
 
 ---
 
-##  Key Features
+## Key Features
 
-###  ED Triage (RAG + SLM)
+### ED Triage (RAG + SLM)
 - **Structured intake** designed for speed: chief complaint (150 char limit), individual vital sign fields with unit labels and soft validation, 0–10 pain score button strip, quick-select contextual fields (onset, arrival mode, AVPU consciousness, trauma mechanism), and single-tap comorbidity checkboxes (cardiac, DM, respiratory, immunocompromised, anticoagulants, renal). Pregnancy status conditionally shown for female patients.
 - **ATS 1–5 classification** using the Australasian Triage Scale with time-to-treatment targets. The LLM prompt includes ATS definitions, vitals thresholds for escalation (HR > 120, SpO₂ < 92%, systolic < 90 mmHg, etc.), and risk-modifier escalation rules (age > 65, pregnancy, anticoagulants).
 - **Three-tier fallback**: Tier 1 — full RAG (retrieval + LLM); Tier 2 — LLM-only (when retrieval unavailable); Tier 3 — rule-based keyword matching (when LLM is down). The rule layer uses ATS-1, ATS-2, ATS-4, and ATS-5 keyword discriminators with ATS-3 as the default for undifferentiated presentations.
 - **Vitals normality signal**: when all recorded vitals are within normal adult ranges, a strong prompt signal pushes the LLM toward ATS-4 or ATS-5 — counteracting the model's ATS-3 anchoring bias. Suppressed for elderly patients (≥65) with comorbidities to prevent inappropriate down-triage.
-- Retrieves top-3 relevant chunks from **5 open-source medical guideline PDFs** (WHO, Singapore MOH, Australian ETEK). Note: the corpus is mostly disease-specific (pediatric, hypertension, diabetes, asthma) rather than triage-specific; retrieval relevance is unmeasured — citations are provided for explainability but whether retrieved chunks actually support the ATS decision has not been evaluated. On Cloud Run, top_k is reduced to 1 to conserve memory.
+- Retrieves top-3 relevant chunks from **18 open-source medical guideline PDFs** organized by tier (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). Tier 1 focuses on triage-specific frameworks; Tier 2 covers ED-relevant specialties; Tier 3 provides supplementary context. A basic retrieval quality check verifies that tier_1/tier_2 documents surface for known clinical presentations — citations are provided for explainability but full relevance scoring is not yet implemented. On Cloud Run, top_k is reduced to 1 to conserve memory.
 - Returns structured rationale, source citations, ATS triage card (category + label + time target + colour), and a mandatory medical disclaimer.
 - **Latency:** ~25–37s on CPU (Docker, 4 vCPU); ~2–3s on RTX 5070 Ti Mobile (12 GB VRAM). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference.
 
-###  Vision Risk Stratification
+### Vision Risk Stratification
 - Optional image upload (JPEG/PNG, max 5 MB)
 - **MedGemma multimodal model** (same Ollama instance as text triage) for image analysis
 - Classifies risk into three tiers: `High-Risk`, `Low-Risk`, `insufficient confidence`
@@ -122,13 +122,13 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - Vision and text triage run **in parallel** via `asyncio.gather`; urgency levels are merged programmatically and findings are structured into labelled sections with no LLM rewriting — eliminates cross-model contamination risk (the text LLM never sees vision output)
 - Configurable via `Aegis_VISION_ENABLED` (default: `true`); graceful fallback when disabled (text triage still returns independently)
 - **Latency:** ~8-10s on RTX 5070 Ti Mobile (parallel vision + text); ~50-60s on Cloud Run CPU-only
-- **⚠️ Unevaluated:** Vision risk stratification has no quantitative accuracy results. A 4B quantized multimodal model classifying wounds and rashes as High/Low-Risk is unlikely to be clinically meaningful without validation. This component is experimental — treat findings as illustrative only.
+- **Unevaluated:** Vision risk stratification has no quantitative accuracy results. A 4B quantized multimodal model classifying wounds and rashes as High/Low-Risk is unlikely to be clinically meaningful without validation. This component is experimental — treat findings as illustrative only.
 
 ![Vision risk stratification](./assets/aegis-MD_vision.gif)
 
 *Vision risk stratification: an X-ray image is uploaded alongside text triage data. The vision model returns a risk tier and confidence score in parallel; results are merged programmatically with text triage output.*
 
-###  Security Gateway
+### Security Gateway
 
 *A demonstration of injection-defense techniques — not a load-bearing production control. Regex blocklists are bypassable by construction; this is a showcase of defense-in-depth patterns.*
 
@@ -153,7 +153,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 *Unicode defense: Cyrillic and Fullwidth homoglyph substitutions designed to evade naive regex are remapped to ASCII by NFKC normalization, then caught by the same patterns.*
 
-###  Monitoring Dashboard
+### Monitoring Dashboard
 - `/metrics` endpoint exposes Prometheus histograms and counters for latency, throughput, block/warn rates, circuit breaker state, and urgency distribution
 - `/dashboard` serves a lightweight HTML view of:
   - Request volume (24h)
@@ -164,7 +164,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ---
 
-##  Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -181,7 +181,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 
 ---
 
-##  Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.12+
@@ -324,7 +324,7 @@ The deployed frontend is configured for `https://pyaesonep.github.io/Aegis-MD/` 
 
 ---
 
-##  Test Suite
+## Test Suite
 
 The project has a comprehensive layered test suite: **332 backend tests** (94% line coverage) and **56 frontend tests** across 11 component files.
 
@@ -410,7 +410,7 @@ The unit eval runs in CI on every push. The live eval requires a running Ollama 
 
 ---
 
-##  CI/CD
+## CI/CD
 
 GitHub Actions enforces quality gates on every push and pull request.
 
@@ -454,7 +454,7 @@ For PRs targeting `main`, the following must pass before merging:
 
 ---
 
-##  Docker Deployment
+## Docker Deployment
 
 Docker is used for the public Cloud Run demo and can also run locally with GPU passthrough via `nvidia-container-toolkit`. **For the simplest local setup, run directly with Ollama** (see Quick Start above).
 
@@ -508,7 +508,7 @@ gcloud run deploy backend-489834841444 \
 
 ---
 
-##  API Reference
+## API Reference
 
 ### `POST /api/v1/triage`
 Submit an ED triage assessment.
@@ -598,7 +598,7 @@ Lightweight HTML monitoring dashboard.
 
 ---
 
-##  Evaluation
+## Evaluation
 
 > **Caveat: this is a developer smoke test, not a clinical validation.** n=17 is too small to report percentages with precision — each case represents ~5.9 percentage points, and the 95% confidence interval on 16/17 runs roughly from the low 70s to ~99%. The cases are textbook, clean presentations written by the same person who designed the prompts; there is no held-out or blind set, no external rater, and no inter-rater check against how an actual triage nurse would score the same vignettes. Treat these numbers as **existence proofs that the system can handle clean cases**, not as accuracy benchmarks. Expansion to 500 cases with held-out subsets is on the roadmap.
 
@@ -609,7 +609,7 @@ The triage system was tested against 17 hand-written ED cases spanning all five 
 | **GPU** | RTX 5070 Ti Mobile (12 GB VRAM) | **16 / 17** | 3.2s | 2.1–2.5s |
 | **CPU** | 4 vCPU (Docker) | 15 / 17 | 36.8s | 24–42s |
 
-> **🔬 Hardware nondeterminism — the most interesting finding:** The renal colic case (ATS-3) passed on GPU but failed on CPU — the *same* MedGemma 4B Q4 model produced different ATS outputs across hardware, likely due to floating-point precision differences in quantized inference. This is not a bug; it's a property of quantized LLM inference that most practitioners never encounter or never notice. The fact that it flipped a safety-relevant output makes this a genuinely important observation for anyone deploying quantized models in clinical contexts.
+> **Hardware nondeterminism — the most interesting finding:** The renal colic case (ATS-3) passed on GPU but failed on CPU — the *same* MedGemma 4B Q4 model produced different ATS outputs across hardware, likely due to floating-point precision differences in quantized inference. This is not a bug; it's a property of quantized LLM inference that most practitioners never encounter or never notice. The fact that it flipped a safety-relevant output makes this a genuinely important observation for anyone deploying quantized models in clinical contexts.
 
 ### Results Summary (GPU)
 
@@ -630,25 +630,25 @@ Average latency: 3.2s (GPU, RTX 5070 Ti Mobile)
 
 | # | Case | Expected | Got | GPU | CPU | Match |
 |---|------|----------|-----|-----|-----|-------|
-| 1 | Cardiac arrest | ATS-1 | ATS-1 | 11.4s | 27.2s | ✓ |
-| 2 | Anaphylactic shock | ATS-1 | ATS-1 | 2.1s | 27.2s | ✓ |
-| 3 | ACS typical | ATS-2 | ATS-2 | 2.1s | 24.3s | ✓ |
-| 4 | Stroke symptoms | ATS-2 | ATS-2 | 2.2s | 31.8s | ✓ |
-| 5 | Severe asthma | ATS-2 | ATS-2 | 2.5s | 23.6s | ✓ |
-| 6 | Pregnant abdominal pain | ATS-2 | ATS-2 | 1.7s | 31.3s | ✓ |
-| 7 | Febrile elderly | ATS-3 | ATS-3 | 3.1s | 42.0s | ✓ |
-| 8 | Renal colic | ATS-3 | ATS-3 ★ | 3.2s | 36.1s | ✓ |
-| 9 | Head injury + warfarin | ATS-3 | ATS-4 | 3.1s | 40.4s | ✗ |
-| 10 | Ankle sprain | ATS-4 | ATS-4 | 2.1s | 30.6s | ✓ |
-| 11 | UTI symptoms | ATS-4 | ATS-4 | 2.3s | 32.1s | ✓ |
-| 12 | Small laceration | ATS-4 | ATS-4 | 2.2s | 33.6s | ✓ |
-| 13 | Suture removal | ATS-5 | ATS-5 | 2.3s | 42.2s | ✓ |
-| 14 | Minor rash | ATS-5 | ATS-5 | 2.3s | 32.9s | ✓ |
-| 15 | Medical certificate | ATS-5 | ATS-5 | 2.4s | 34.0s | ✓ |
-| 16 | MVA major trauma | ATS-2 | ATS-2 | 3.1s | 22.9s | ✓ |
-| 17 | Fall elderly | ATS-3 | ATS-3 | 3.1s | 40.4s | ✓ |
+| 1 | Cardiac arrest | ATS-1 | ATS-1 | 11.4s | 27.2s | Pass |
+| 2 | Anaphylactic shock | ATS-1 | ATS-1 | 2.1s | 27.2s | Pass |
+| 3 | ACS typical | ATS-2 | ATS-2 | 2.1s | 24.3s | Pass |
+| 4 | Stroke symptoms | ATS-2 | ATS-2 | 2.2s | 31.8s | Pass |
+| 5 | Severe asthma | ATS-2 | ATS-2 | 2.5s | 23.6s | Pass |
+| 6 | Pregnant abdominal pain | ATS-2 | ATS-2 | 1.7s | 31.3s | Pass |
+| 7 | Febrile elderly | ATS-3 | ATS-3 | 3.1s | 42.0s | Pass |
+| 8 | Renal colic | ATS-3 | ATS-3 * | 3.2s | 36.1s | Pass |
+| 9 | Head injury + warfarin | ATS-3 | ATS-4 | 3.1s | 40.4s | Fail |
+| 10 | Ankle sprain | ATS-4 | ATS-4 | 2.1s | 30.6s | Pass |
+| 11 | UTI symptoms | ATS-4 | ATS-4 | 2.3s | 32.1s | Pass |
+| 12 | Small laceration | ATS-4 | ATS-4 | 2.2s | 33.6s | Pass |
+| 13 | Suture removal | ATS-5 | ATS-5 | 2.3s | 42.2s | Pass |
+| 14 | Minor rash | ATS-5 | ATS-5 | 2.3s | 32.9s | Pass |
+| 15 | Medical certificate | ATS-5 | ATS-5 | 2.4s | 34.0s | Pass |
+| 16 | MVA major trauma | ATS-2 | ATS-2 | 3.1s | 22.9s | Pass |
+| 17 | Fall elderly | ATS-3 | ATS-3 | 3.1s | 40.4s | Pass |
 
-> ★ Case 8 (renal colic) matched on GPU but was misclassified as ATS-2 on CPU — see hardware note above. |
+> \* Case 8 (renal colic) matched on GPU but was misclassified as ATS-2 on CPU — see hardware note above.
 
 ### Error Analysis
 
@@ -694,7 +694,7 @@ docker stop aegis-eval
 
 ---
 
-##  Safety, Ethics & Limitations
+## Safety, Ethics & Limitations
 
 **This is a research prototype. It is not a medical device and must not be used for real patient care.**
 
@@ -705,7 +705,7 @@ docker stop aegis-eval
 - **Known limitations:**
   - The LLM can hallucinate. The RAG layer grounds it in guideline text, and the system prompt includes explicit anti-hallucination rules (only cite guidelines directly relevant to stated symptoms; never introduce unstated conditions). Vision findings are appended verbatim — the text LLM never sees them, which eliminates cross-model contamination but does not prevent the vision model itself from hallucinating visual findings.
   - **Vision is unevaluated.** The vision component has zero quantitative accuracy results. A 4B quantized multimodal model doing High/Low-Risk stratification on wounds and rashes is almost certainly not clinically meaningful without validation against a labelled dataset (e.g., HAM10000 for skin lesions). The vision output is constrained to specific risk labels, but the underlying model performance is unmeasured.
-  - **RAG over a 5-document corpus is limited.** With top_k=3 (top_k=1 on Cloud Run), retrieval over a corpus that is mostly disease-specific (WHO pediatric, MOH hypertension/diabetes, NHLBI asthma) rather than triage-specific may surface background that isn't actually about urgency. There is no retrieval eval — no measurement of whether cited chunks support the ATS decision. Citations are provided for explainability but retrieval relevance is unmeasured.
+  - **RAG over a 19-document corpus is limited.** With top_k=3 (top_k=1 on Cloud Run), retrieval over a corpus spanning triage-specific frameworks (Tier 1), specialty guidelines (Tier 2), and supplementary references (Tier 3) may still surface background that isn't directly about urgency classification. A basic retrieval quality check exists (`tests/eval/test_retrieval_quality.py`) that verifies tier_1/tier_2 documents surface for known clinical presentations, but full relevance scoring (MRR/nDCG) is not yet implemented. Citations are provided for explainability.
   - The security filter uses scored regex heuristics with Unicode defense — a demonstration of defense-in-depth patterns, not a bypass-proof control. Regex blocklists are bypassable by construction, and novel ML-based jailbreaks may still succeed.
   - **The underlying model (MedGemma 1.5 4B) has not been evaluated or optimized for ED triage.** Its official benchmarks are on radiology, dermatology, pathology, ophthalmology, and medical exam QA (MedQA: 69.1%, MedMCQA: 59.8%). The model card notes it "may make it more sensitive to the specific prompt used" — triage performance is likely prompt-dependent in ways not yet measured.
   - English language only in the MVP.
@@ -714,21 +714,38 @@ If you discover a safety issue or bypass, please open a GitHub issue or email me
 
 ---
 
-##  Guideline Sources
+## Guideline Sources
 
-Triage logic is grounded in the following publicly available clinical guidelines:
+Triage logic is grounded in the following publicly available clinical guidelines, organized by tier. Full source URLs, license details, and download links are recorded in [`data/guidelines/SOURCES.md`](./data/guidelines/SOURCES.md).
 
-1. **Australian Emergency Triage Education Kit (ETEK), 2nd Edition** — Australian Commission on Safety and Quality in Health Care
-2. **WHO Pocket Book of Hospital Care for Children, 2nd Edition** — World Health Organization
-3. **MOH Clinical Practice Guidelines: Hypertension (2017)** — Ministry of Health, Singapore
-4. **MOH Clinical Practice Guidelines: Diabetes Mellitus (2014)** — Ministry of Health, Singapore
-5. **NHLBI Guidelines for the Diagnosis and Management of Asthma (EPR-3)** — U.S. National Institutes of Health
+### Tier 1 — Triage-Specific Frameworks
+1. **Australian Emergency Triage Education Kit (ETEK), 2nd Edition** — ACSQHC, 2024 (CC BY 3.0 AU)
+2. **ACEP/ENA Joint Policy — Triage Scale Standardization** — ACEP + ENA, 2025
+3. **Triage in the Hospital** — Local corpus
+4. **Emergency Severity Index (ESI) Handbook, 5th Edition** — ENA, 2020
 
-These documents are used under their respective public-domain / non-commercial educational licenses. Full citations are included in the `/data/guidelines/` directory.
+### Tier 2 — ED-Relevant Specialty Guidelines
+5. **WHO Basic Emergency Care (BEC)** — WHO/ICRC, 2018 (CC BY-NC-SA 3.0 IGO)
+6. **WHO Interagency Integrated Triage Tool (IITT)** — WHO/ICRC/MSF, 2020
+7. **NICE Head Injury Assessment** — NICE NG232 (updated from CG176, 2023; OGL v3.0)
+8. **Six to Help — Fixing Acute Medicine** — 2023
+9. **RCEM Best Practice — Acute Pain in Adults** — 2024
+10. **Haemophilia Emergency Management** — Local corpus
+
+### Tier 3 — Supplementary Guidelines
+11. **WHO Pocket Book of Hospital Care for Children, 2nd Edition** — WHO, 2013 (CC BY-NC-SA 3.0 IGO)
+12. **WHO IMAI — District Clinician Manual: Hospital Care for Adults** — WHO SEARO, 2021
+13. **WHO ETAT — Emergency Triage Assessment and Treatment** — WHO, 2017 (superseded by IITT)
+14. **RCEM Best Practice — Invasive Procedures in the ED** — 2024
+15. **NHLBI Guidelines for the Diagnosis and Management of Asthma (EPR-3)** — NHLBI, 2007 (Public Domain)
+16. **Singapore MOH Clinical Practice Guidelines** — Ministry of Health, Singapore
+17. **MOH Clinical Practice Guidelines: Hypertension (2017)** — Ministry of Health, Singapore
+18. **STI Guidelines 2021** — Local corpus
+19. **Pediatrics Guidelines** — Local corpus
 
 ---
 
-##  Roadmap
+## Roadmap
 
 - [x] MVP: Text triage with RAG + SLM
 - [x] MVP: Vision risk stratification (skin lesion)
@@ -744,7 +761,7 @@ These documents are used under their respective public-domain / non-commercial e
 
 ---
 
-##  Contributing
+## Contributing
 
 This is a personal portfolio project. I am not accepting external code contributions at this time, but I welcome:
 - Bug reports and safety disclosures via GitHub Issues
@@ -753,7 +770,7 @@ This is a personal portfolio project. I am not accepting external code contribut
 
 ---
 
-##  License
+## License
 
 This project is released for **non-commercial research and educational use only**.
 
@@ -766,7 +783,7 @@ This project is released for **non-commercial research and educational use only*
 
 ---
 
-##  Author
+## Author
 
 **Pyae Sone**  
 BEng Computer Science & Design @ SUTD | Former MBBS | Cybersecurity & Red Teaming Intern @ LTA Singapore  
