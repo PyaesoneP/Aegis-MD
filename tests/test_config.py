@@ -74,6 +74,30 @@ class TestDefaultSettings:
         assert s.max_rationale_chars == 4_000
         assert s.max_disclaimer_chars == 500
 
+    def test_llm_base_url_default(self):
+        s = Settings()
+        assert s.llm_base_url == "http://localhost:8080/v1"
+
+    def test_llm_timeout_default(self):
+        s = Settings()
+        assert s.llm_timeout_seconds == 120
+
+    def test_llm_max_retries_default(self):
+        s = Settings()
+        assert s.llm_max_retries == 2
+
+    def test_llm_retry_backoff_default(self):
+        s = Settings()
+        assert s.llm_retry_backoff == 1.5
+
+    def test_llm_temperature_default(self):
+        s = Settings()
+        assert s.llm_temperature == 0.0
+
+    def test_llm_max_tokens_default(self):
+        s = Settings()
+        assert s.llm_max_tokens == 256
+
 
 class TestEnvironmentOverrides:
     def test_env_var_overrides_allowed_origins(self, monkeypatch):
@@ -111,6 +135,31 @@ class TestEnvironmentOverrides:
         monkeypatch.setenv("Aegis_ENABLE_HSTS", "true")
         s = Settings()
         assert s.enable_hsts is True
+
+    def test_env_var_overrides_llm_base_url(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_BASE_URL", "http://remote-host:8080/v1")
+        s = Settings()
+        assert s.llm_base_url == "http://remote-host:8080/v1"
+
+    def test_env_var_overrides_llm_timeout(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_TIMEOUT_SECONDS", "60")
+        s = Settings()
+        assert s.llm_timeout_seconds == 60
+
+    def test_env_var_overrides_llm_max_retries(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_MAX_RETRIES", "5")
+        s = Settings()
+        assert s.llm_max_retries == 5
+
+    def test_env_var_overrides_llm_temperature(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_TEMPERATURE", "0.7")
+        s = Settings()
+        assert s.llm_temperature == 0.7
+
+    def test_env_var_overrides_llm_max_tokens(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_MAX_TOKENS", "512")
+        s = Settings()
+        assert s.llm_max_tokens == 512
 
 
 class TestPropertyParsing:
