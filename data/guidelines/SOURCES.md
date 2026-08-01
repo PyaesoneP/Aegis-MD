@@ -6,7 +6,7 @@ This file records the official source URLs, license terms, and citation labels f
 
 **Verification date:** URLs were live-tested in Jul 2026. Status notes reflect actual accessibility at time of testing.
 
-**Corpus:** 18 documents — Tier 1 (4), Tier 2 (6), Tier 3 (8). Citation labels below are the exact labels emitted by `data/chroma/chunk.py` and shown in API responses.
+**Corpus:** 18 documents staged — Tier 1 (4), Tier 2 (6), Tier 3 (8). 15 are `approved` by the quality gate and indexed into ChromaDB; 3 are `conditional` (gated, pending review): *Triage in the Hospital*, *RCEM Acute Pain*, *RCEM Invasive Procedures*. Citation labels below are the exact labels emitted by `data/chroma/chunk.py` and shown in API responses for indexed documents.
 
 ---
 
@@ -39,7 +39,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **Published:** Unknown
 - **Citation Label:** Triage in the Hospital
 - **License:** Scribd terms — restricted redistribution; research use only
-- **Status:** Active (local corpus)
+- **Status:** Gated (pending review) — excluded from indexing until publisher confirmed
 - **Verified:** Scribd page accessible; 15 pages, ATS triage content confirmed
 - **File:** `97517282-Triage-in-the-Hospital.pdf`
 - **Note:** Original publisher could not be identified. Content covers general ED triage principles and ATS categories.
@@ -109,7 +109,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **Published:** 2024
 - **Citation Label:** RCEM Acute Pain
 - **License:** RCEM — check specific document terms
-- **Status:** Active
+- **Status:** Gated (pending review) — excluded from indexing until license terms confirmed
 - **Verified:** RCEM site requires account for some publications
 - **File:** `Management_of_Acute_Pain_in_Adults_2024_v1.pdf`
 - **Note:** Pain assessment and management in ED. Relevant for pain-score-based triage escalation.
@@ -157,7 +157,7 @@ This file records the official source URLs, license terms, and citation labels f
 - **Published:** 2024
 - **Citation Label:** RCEM Invasive Procedures
 - **License:** RCEM — check specific document terms
-- **Status:** Active
+- **Status:** Gated (pending review) — excluded from indexing until license terms confirmed
 - **Verified:** RCEM site requires account for some publications
 - **File:** `RCEM_Best_Practice_Invasive_Procedures_in_the_Emergency_Department.pdf`
 - **Note:** Reference for procedural guidance in ED settings.
