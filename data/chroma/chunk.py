@@ -18,8 +18,9 @@ def load_assessment() -> tuple[dict[str, dict], dict[str, dict]]:
     assessment record map and ``approved`` contains only records whose
     status is "approved".
 
-    Raises FileNotFoundError if assessment.json does not exist,
-    requiring the user to run assess.py first.
+    Raises FileNotFoundError if assessment.json does not exist, or
+    ValueError if the file is not a valid assessment schema — both
+    require re-running assess.py.
     """
     if not ASSESSMENT_PATH.exists():
         raise FileNotFoundError(
@@ -27,11 +28,16 @@ def load_assessment() -> tuple[dict[str, dict], dict[str, dict]]:
             f"Run 'python data/guidelines/assess.py' first to assess documents."
         )
     data = json.loads(ASSESSMENT_PATH.read_text())
-    documents = data["documents"]
+    documents = data.get("documents") if isinstance(data, dict) else None
+    if not isinstance(documents, dict):
+        raise ValueError(
+            f"{ASSESSMENT_PATH} is missing the 'documents' map. "
+            f"Regenerate it with 'python data/guidelines/assess.py'."
+        )
     approved = {
         fname: rec
         for fname, rec in documents.items()
-        if rec["status"] == "approved"
+        if isinstance(rec, dict) and rec.get("status") == "approved"
     }
     return documents, approved
 
