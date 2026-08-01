@@ -20,8 +20,9 @@ from data.guidelines.assess import (
     assess_document,
     resolve_assessment_spec,
     normalize_filename,
+    DOCUMENT_ASSESSMENT,
 )
-from data.chroma.chunk import load_assessment
+from data.chroma.chunk import load_assessment, DOCUMENT_REGISTRY
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -191,14 +192,14 @@ class TestAssessDocument:
         assert record["status"] == "approved"
         assert record["quality_score"] == 5
 
-    def test_unknown_document_is_conditional(self, tmp_path: Path) -> None:
+    def test_unknown_document_is_rejected(self, tmp_path: Path) -> None:
         pdf_path = tmp_path / "mystery_doc.pdf"
         with open(pdf_path, "wb") as f:
             f.write(_build_text_pdf())
 
         record = assess_document(pdf_path)
-        assert record["status"] == "conditional"
-        assert record["notes"] == "Document not found in DOCUMENT_ASSESSMENT registry."
+        assert record["status"] == "rejected"
+        assert "registry" in record["notes"]
 
 
 # ── Assessment JSON schema ────────────────────────────────────────────────
@@ -260,3 +261,32 @@ class TestLoadAssessment:
         monkeypatch.setattr("data.chroma.chunk.ASSESSMENT_PATH", assessment)
         with pytest.raises(json.JSONDecodeError):
             load_assessment()
+
+    def test_missing_documents_key_raises(self, monkeypatch, tmp_path: Path) -> None:
+        assessment = tmp_path / "assessment.json"
+        assessment.write_text(json.dumps({"schema_version": 1}))
+        monkeypatch.setattr("data.chroma.chunk.ASSESSMENT_PATH", assessment)
+        with pytest.raises(ValueError, match="documents"):
+            load_assessment()
+
+
+# ── Registry sync between assess.py and chunk.py ───────────────────────────
+
+
+class TestRegistrySync:
+    def test_registry_keys_match(self) -> None:
+        """Every pattern in DOCUMENT_ASSESSMENT must exist in DOCUMENT_REGISTRY."""
+        assert set(DOCUMENT_ASSESSMENT) == set(DOCUMENT_REGISTRY)
+
+    def test_publication_years_match(self) -> None:
+        for pattern in DOCUMENT_ASSESSMENT:
+            assert (
+                DOCUMENT_ASSESSMENT[pattern].get("publication_year")
+                == DOCUMENT_REGISTRY[pattern]["publication_year"]
+            ), f"publication_year mismatch for '{pattern}'"
+
+    def test_every_registry_entry_resolves(self) -> None:
+        """Each registry pattern must match a representative normalized filename."""
+        for pattern in DOCUMENT_REGISTRY:
+            probe = pattern.replace(" ", "-").replace("  ", "_")
+            assert resolve_assessment_spec(f"{probe}.pdf") is not None
