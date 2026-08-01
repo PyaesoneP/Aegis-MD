@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -262,34 +263,117 @@ def test_normalize_vision_confidence_non_numeric():
 
 
 # ---------------------------------------------------------------------------
-# vision_response — stub behavior (migration deferred)
+# vision_response — real inference via llama.cpp (mocked _chat_completion)
 # ---------------------------------------------------------------------------
 
 
-def test_vision_response_returns_placeholder():
-    result = vision_response(b"\x89PNG fake image bytes")
+class TestVisionResponse:
+    def test_valid_json_returns_vision_result(self):
+        fake_raw = (
+            '{"risk": "High-Risk", "confidence": 0.87, '
+            '"rationale": "Wound appears infected with surrounding erythema."}'
+        )
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            result = vision_response(b"\xff\xd8\xff fake jpeg")
 
-    assert isinstance(result, VisionResult)
-    assert result.risk == "insufficient confidence"
-    assert result.confidence is None
-    assert "placeholder mode active" in result.rationale
+        assert isinstance(result, VisionResult)
+        assert result.risk == "High-Risk"
+        assert result.confidence == 0.87
+        assert "erythema" in result.rationale
 
+    def test_accepts_risk_alias_and_null_confidence(self):
+        fake_raw = (
+            '{"risk": "high risk", "confidence": null, '
+            '"rationale": "Image not sufficiently clear."}'
+        )
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            result = vision_response(b"fake")
 
-def test_vision_response_ignores_patient_context():
-    """Stub ignores patient_context argument gracefully."""
-    result = vision_response(
-        b"fake",
-        patient_context=PatientContext(age=45, sex="female"),
-    )
-    assert result.risk == "insufficient confidence"
-    assert "placeholder mode active" in result.rationale
+        assert result.risk == "High-Risk"
+        assert result.confidence is None
 
+    def test_invalid_json_raises(self):
+        with patch("app.llm._chat_completion", return_value="not json"):
+            with pytest.raises(LLMError):
+                vision_response(b"fake")
 
-def test_vision_response_does_not_call_llm():
-    """Verify no LLM calls are made — vision is a stub."""
-    with patch("app.llm._chat_completion", side_effect=AssertionError("should not be called")):
-        result = vision_response(b"fake")
-    assert result.risk == "insufficient confidence"
+    def test_missing_rationale_raises(self):
+        fake_raw = '{"risk": "Low-Risk", "confidence": 0.5}'
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            with pytest.raises(LLMError, match="rationale"):
+                vision_response(b"fake")
+
+    def test_invalid_risk_raises(self):
+        fake_raw = '{"risk": "critical", "confidence": 0.5, "rationale": "unclear"}'
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            with pytest.raises(LLMError):
+                vision_response(b"fake")
+
+    def test_request_shape_embeds_image_url_data_uri(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages):
+            captured["model"] = model
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor abrasion."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\x89PNG fake")
+
+        assert captured["messages"][0]["role"] == "system"
+        user_content = captured["messages"][1]["content"]
+        assert isinstance(user_content, list)
+        parts = {part["type"]: part for part in user_content}
+        assert parts["text"]["text"].startswith("Analyze the attached medical image.")
+        url = parts["image_url"]["image_url"]["url"]
+        assert url.startswith("data:image/png;base64,")
+
+    def test_request_shape_jpeg_mime(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\xff\xd8\xff fake jpeg")
+
+        user_content = captured["messages"][1]["content"]
+        image_url = next(p for p in user_content if p["type"] == "image_url")
+        url = image_url["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+
+    def test_request_shape_includes_patient_context(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(
+                b"\x89PNG fake",
+                patient_context=PatientContext(age=45, sex="female"),
+            )
+
+        user_content = captured["messages"][1]["content"]
+        text_part = next(p for p in user_content if p["type"] == "text")
+        assert "age=45" in text_part["text"]
+        assert "sex=female" in text_part["text"]
+
+    def test_request_shape_no_patient_context(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\x89PNG fake")
+
+        user_content = captured["messages"][1]["content"]
+        text_part = next(p for p in user_content if p["type"] == "text")
+        assert "Patient context: Not provided" in text_part["text"]
 
 
 # ===========================================================================

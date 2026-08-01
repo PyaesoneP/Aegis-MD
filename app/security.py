@@ -296,6 +296,19 @@ def validate_image_bytes(content: bytes) -> SecurityScore:
     return SecurityScore(SecurityVerdict.PASS, "Image magic bytes valid")
 
 
+def image_mime_type(content: bytes) -> str:
+    """Return the MIME type for image *content* from its magic bytes.
+
+    Defaults to ``image/png`` so downstream data URIs stay well-formed
+    even for unrecognized content.
+    """
+    if content.startswith(_JPEG_MAGIC):
+        return "image/jpeg"
+    if content.startswith(_PNG_MAGIC):
+        return "image/png"
+    return "image/png"
+
+
 # ---------------------------------------------------------------------------
 # Rate limiter with burst allowance and per-path configuration
 # ---------------------------------------------------------------------------

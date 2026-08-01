@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 import time
@@ -17,6 +18,7 @@ from app.models import (
     VisionResult,
 )
 from app.retriever import RetrievedGuideline, retrieve_relevant_guidelines
+from app.security import image_mime_type
 
 
 class LLMError(RuntimeError):
@@ -358,7 +360,7 @@ def _format_patient_context(patient_context: PatientContext | None) -> str:
     return ", ".join(values) if values else "Not provided"
 
 
-def _chat_completion(model: str, messages: list[dict[str, str]]) -> str:
+def _chat_completion(model: str, messages: list[dict[str, Any]]) -> str:
     settings = get_settings()
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     body = {
@@ -469,15 +471,40 @@ def vision_response(
     image_bytes: bytes,
     patient_context: PatientContext | None = None,
 ) -> VisionResult:
-    """Vision inference stub — migration to llama.cpp deferred.
+    """Run multimodal vision inference through llama.cpp.
 
-    Returns a placeholder VisionResult so that the triage pipeline
-    degrades gracefully when an image is supplied.
+    The image is base64-encoded and embedded as a ``data:`` URI in an
+    OpenAI-style ``image_url`` content part.  ``llama-server`` with an
+    ``mmproj`` projector serves it to a vision-capable model.
     """
+    settings = get_settings()
+
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    mime = image_mime_type(image_bytes)
+    ctx = _format_patient_context(patient_context)
+
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": f"Analyze the attached medical image.\n\nPatient context: {ctx}",
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{image_b64}"},
+        },
+    ]
+    messages = [
+        {"role": "system", "content": settings.vision_system_prompt},
+        {"role": "user", "content": content},
+    ]
+
+    raw = _chat_completion(settings.llm_model, messages)
+    payload = _parse_json_payload(raw)
+
     return VisionResult(
-        risk="insufficient confidence",
-        confidence=None,
-        rationale="Vision inference migration deferred — placeholder mode active.",
+        risk=_normalize_vision_risk(payload.get("risk")),
+        confidence=_normalize_vision_confidence(payload.get("confidence")),
+        rationale=_require_text(payload.get("rationale"), "rationale"),
     )
 
 
