@@ -150,7 +150,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
         "authority": "WHO",
         "authority_score": 1.0,
         "publication_year": 2013,
-        "foundational": False,
+        "foundational": True,
         "relevance": "supplementary",
         "license": "CC BY-NC-SA 3.0 IGO",
         "license_score": 1.0,
@@ -200,7 +200,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
         "authority": "ACEP",
         "authority_score": 1.0,
         "publication_year": 2003,
-        "foundational": False,
+        "foundational": True,
         "relevance": "supplementary",
         "license": "ACEP clinical policy",
         "license_score": 1.0,
@@ -344,13 +344,14 @@ def assess_document(file_path: Path) -> dict[str, Any]:
     if spec is None:
         spec = {
             "authority": "Not in assessment registry",
-            "authority_score": 0.5,
+            "authority_score": 0.0,
             "publication_year": None,
             "foundational": False,
-            "relevance": "triage_specific",
+            "relevance": "unrelated",
             "license": "Unknown (not in registry)",
-            "license_score": 0.5,
-            "notes": "Document not found in DOCUMENT_ASSESSMENT registry.",
+            "license_score": 0.0,
+            "notes": "Document not found in DOCUMENT_ASSESSMENT registry — "
+            "add a registry entry to classify it for indexing.",
         }
 
     criteria = {
