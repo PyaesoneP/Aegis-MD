@@ -7,6 +7,7 @@ from app.llm import (
     LLMError,
     _build_retrieval_query,
     _build_user_prompt,
+    _chat_completion,
     _extract_message_content,
     _format_comorbidities,
     _format_patient_context,
@@ -29,8 +30,9 @@ from app.models import (
 )
 
 
-def test_extract_message_content_from_dict_response():
-    assert _extract_message_content({"message": {"content": "hello"}}) == "hello"
+def test_extract_message_content_from_openai_shape():
+    resp = {"choices": [{"message": {"content": "hello"}}]}
+    assert _extract_message_content(resp) == "hello"
 
 
 def test_extract_message_content_from_object_response():
@@ -41,7 +43,110 @@ def test_extract_message_content_from_object_response():
     assert _extract_message_content(response) == "ok"
 
 
-def test_parse_json_payload_can_parse_wrapped_json():
+def test_extract_message_content_empty_choices():
+    assert _extract_message_content({"choices": []}) == ""
+
+
+def test_extract_message_content_no_choices_key():
+    assert _extract_message_content({"message": {"content": "fallback"}}) == ""
+
+
+# ---------------------------------------------------------------------------
+# _chat_completion tests (mocked httpx.Client)
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_response(json_data, status_code=200):
+    """Build a mock response object with working raise_for_status and .json()."""
+    import unittest.mock as m
+
+    mock_resp = m.Mock()
+    mock_resp.json.return_value = json_data
+    mock_resp.status_code = status_code
+    if status_code >= 400:
+        import httpx
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            message="Server error",
+            request=m.Mock(),
+            response=mock_resp,
+        )
+    else:
+        mock_resp.raise_for_status.return_value = None
+    return mock_resp
+
+
+def _make_mock_client(resp_factory):
+    """Build a mock httpx.Client whose .post() returns responses from resp_factory."""
+    import unittest.mock as m
+
+    mock_client = m.Mock()
+    mock_client.post.return_value = resp_factory()
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+    return mock_client
+
+
+def test_chat_completion_success():
+    resp_data = {
+        "choices": [{"message": {"content": '{"ats_category":"ATS-3","rationale":"ok","confidence":"high"}'}}],
+    }
+    mock_client = _make_mock_client(lambda: _make_mock_response(resp_data, 200))
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert "ATS-3" in result
+
+
+def test_chat_completion_empty_content_raises():
+    resp_data = {"choices": [{"message": {"content": ""}}]}
+    mock_client = _make_mock_client(lambda: _make_mock_response(resp_data, 200))
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        with pytest.raises(LLMError, match="empty response"):
+            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+
+
+def test_chat_completion_http_error_raises():
+    mock_client = _make_mock_client(lambda: _make_mock_response(None, 500))
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        with pytest.raises(LLMError):
+            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+
+
+def test_chat_completion_timeout_raises():
+    mock_client = _make_mock_client(lambda: _make_mock_response(None, 504))
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        with pytest.raises(LLMError):
+            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+
+
+def test_chat_completion_retry_then_success():
+    import unittest.mock as m
+
+    call_count = [0]
+
+    def resp_factory():
+        call_count[0] += 1
+        if call_count[0] <= 1:
+            return _make_mock_response(None, 500)
+        return _make_mock_response({
+            "choices": [{"message": {"content": '{"ats_category":"ATS-2","rationale":"ok","confidence":"medium"}'}}],
+        }, 200)
+
+    mock_client = m.Mock()
+    mock_client.post = m.Mock(side_effect=lambda *a, **kw: resp_factory())
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert "ATS-2" in result
+    assert call_count[0] == 2
+
+
+def test_chat_completion_exhaust_retries_raises():
+    mock_client = _make_mock_client(lambda: _make_mock_response(None, 500))
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        with pytest.raises(LLMError, match="attempts"):
+            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
     raw = 'prefix {"ats_category":"ATS-3","rationale":"safe","confidence":"low"} suffix'
     payload = _parse_json_payload(raw)
 
@@ -125,44 +230,34 @@ def test_normalize_vision_confidence_non_numeric():
 
 
 # ---------------------------------------------------------------------------
-# vision_response integration (mocked Ollama)
+# vision_response — stub behavior (migration deferred)
 # ---------------------------------------------------------------------------
 
 
-def test_vision_response_parses_valid_json():
-    fake_raw = '{"risk":"Low-Risk","confidence":0.87,"rationale":"No abnormal findings."}'
-
-    with patch("app.llm._chat_with_ollama", return_value=fake_raw):
-        result = vision_response(b"\x89PNG fake image bytes")
+def test_vision_response_returns_placeholder():
+    result = vision_response(b"\x89PNG fake image bytes")
 
     assert isinstance(result, VisionResult)
-    assert result.risk == "Low-Risk"
-    assert result.confidence == 0.87
-    assert result.rationale == "No abnormal findings."
+    assert result.risk == "insufficient confidence"
+    assert result.confidence is None
+    assert "placeholder mode active" in result.rationale
 
 
-def test_vision_response_includes_patient_context_in_prompt():
-    """Ensures patient context is formatted into the user prompt."""
-    fake_raw = '{"risk":"insufficient confidence","confidence":null,"rationale":"No usable image."}'
-    from app.models import PatientContext
-
-    with patch("app.llm._chat_with_ollama", return_value=fake_raw) as mock_chat:
-        vision_response(
-            b"fake",
-            patient_context=PatientContext(age=45, sex="female"),
-        )
-
-    call_args = mock_chat.call_args
-    messages = call_args.kwargs["messages"]
-    user_content = messages[1]["content"]
-    assert "age=45" in user_content
-    assert "sex=female" in user_content
+def test_vision_response_ignores_patient_context():
+    """Stub ignores patient_context argument gracefully."""
+    result = vision_response(
+        b"fake",
+        patient_context=PatientContext(age=45, sex="female"),
+    )
+    assert result.risk == "insufficient confidence"
+    assert "placeholder mode active" in result.rationale
 
 
-def test_vision_response_raises_llm_error_on_invalid_json():
-    with patch("app.llm._chat_with_ollama", return_value="not json at all"):
-        with pytest.raises(LLMError):
-            vision_response(b"fake")
+def test_vision_response_does_not_call_llm():
+    """Verify no LLM calls are made — vision is a stub."""
+    with patch("app.llm._chat_completion", side_effect=AssertionError("should not be called")):
+        result = vision_response(b"fake")
+    assert result.risk == "insufficient confidence"
 
 
 # ===========================================================================
@@ -422,7 +517,7 @@ class TestRagResponse:
             age=30, sex="female", pain_score=4,
         )
 
-        with patch("app.llm._chat_with_ollama", return_value=fake_raw):
+        with patch("app.llm._chat_completion", return_value=fake_raw):
             with patch("app.llm.retrieve_relevant_guidelines", return_value=[]):
                 result = rag_response(triage_input)
 
@@ -438,7 +533,7 @@ class TestRagResponse:
             age=22, sex="male", pain_score=3,
         )
 
-        with patch("app.llm._chat_with_ollama", return_value=fake_raw):
+        with patch("app.llm._chat_completion", return_value=fake_raw):
             with patch(
                 "app.llm.retrieve_relevant_guidelines",
                 side_effect=Exception("Chroma unavailable"),
@@ -464,7 +559,7 @@ class TestRagResponse:
             age=65, sex="male", pain_score=8,
         )
 
-        with patch("app.llm._chat_with_ollama", return_value=fake_raw):
+        with patch("app.llm._chat_completion", return_value=fake_raw):
             with patch(
                 "app.llm.retrieve_relevant_guidelines",
                 return_value=guidelines,
