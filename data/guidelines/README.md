@@ -85,6 +85,38 @@ For each PDF, confirm:
 
 Do not expose raw PDF contents directly through the API. The backend should return short citation labels and generated rationale, not large copied passages.
 
+## Assessment Pipeline
+
+Before chunking, run the quality assessment gate to evaluate each PDF:
+
+```bash
+python data/guidelines/assess.py
+```
+
+This evaluates every PDF against five criteria and writes `assessment.json` (gitignored).
+
+### Scoring Rubric
+
+Each document receives a quality score (1–5) and a status:
+
+| Criterion | Pass (1.0) | Partial (0.5) | Fail (0.0) |
+|---|---|---|---|
+| **Authority** | Gov/academic/professional body | Recognized content, unknown publisher | Unknown origin |
+| **Currency** | ≤10 yrs old or foundational | — | Older, not foundational |
+| **Relevance** | Triage-specific or ED-relevant | — | Unrelated |
+| **Structure** | Text extractable (avg ≥100 chars/page) | — | Image-only / unreadable |
+| **License** | Non-commercial research confirmed | Terms need review | Incompatible |
+
+### Statuses
+
+- **Approved** — passes all criteria. Indexed automatically.
+- **Conditional** — minor concerns (outdated, license to verify, unknown publisher). Requires manual review and promotion in `assessment.json` before indexing.
+- **Rejected** — fails a hard gate (unrecognized authority, irrelevant, unreadable, incompatible license). Excluded from indexing.
+
+### Assessment Registry
+
+The `DOCUMENT_ASSESSMENT` dict in `assess.py` holds per-document metadata (authority, year, foundational flag, license). New PDFs added to the corpus without a registry entry default to `conditional` status.
+
 ## Chunking Pipeline
 
 Run the chunking script to build or rebuild the ChromaDB collection:
@@ -94,7 +126,8 @@ python data/chroma/chunk.py
 ```
 
 This script will:
-- Process all `.pdf` files in `data/guidelines/`
+- Load `assessment.json` from the assessment pipeline (run `assess.py` first)
+- Index only `approved` documents; skip `conditional` and `rejected`
 - Skip files larger than 50 MB
 - Enrich chunk metadata with source URL, citation label, and document tier
 - Clear and rebuild the ChromaDB collection
