@@ -78,10 +78,10 @@ def test_health_reports_degraded_retrieval_when_chroma_unavailable(client, monke
     assert "Chroma retrieval unavailable" in payload["components"]["retrieval"]["detail"]
 
 
-def test_health_reports_degraded_text_model_when_ollama_package_missing(client, monkeypatch):
+def test_health_reports_degraded_text_model_when_llm_unreachable(client, monkeypatch):
     monkeypatch.setattr(
-        "app.main._check_ollama_health",
-        lambda: ("degraded", "Ollama package is not installed or unavailable."),
+        "app.main._check_llm_health",
+        lambda settings: ("degraded", "LLM endpoint unreachable at http://localhost:8080/v1"),
     )
 
     response = client.get("/health")
@@ -89,7 +89,30 @@ def test_health_reports_degraded_text_model_when_ollama_package_missing(client, 
     assert response.status_code == 200
     payload = response.json()
     assert payload["components"]["text_model"]["status"] == "degraded"
-    assert "Ollama package is not installed or unavailable." in payload["components"]["text_model"]["detail"]
+    assert "LLM endpoint unreachable" in payload["components"]["text_model"]["detail"]
+
+
+def test_health_lists_served_models(client, monkeypatch):
+    import unittest.mock as m
+
+    mock_resp = m.Mock()
+    mock_resp.json.return_value = {
+        "object": "list",
+        "data": [{"id": "medgemma"}, {"id": "gpt-3.5-turbo"}],
+    }
+    mock_resp.raise_for_status.return_value = None
+
+    mock_client = m.Mock()
+    mock_client.get.return_value = mock_resp
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+    monkeypatch.setattr("app.main.httpx.Client", lambda timeout: mock_client)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    detail = response.json()["components"]["text_model"]["detail"]
+    assert "serving: medgemma, gpt-3.5-turbo" in detail
 
 
 def test_valid_text_only_triage_matches_contract(client):

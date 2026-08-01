@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # ── LLM / RAG / Vision ──────────────────────────────────────────────
     model_config = SettingsConfigDict(env_prefix="Aegis_", case_sensitive=False)
     llm_model: str = "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL"
+    llm_base_url: str = "http://localhost:8080/v1"
+    llm_timeout_seconds: float = 120
+    llm_max_retries: int = 2
+    llm_retry_backoff: float = 1.5
+    llm_temperature: float = 0.0
+    llm_max_tokens: int = 256
     chroma_path: str = "data/chroma/chroma_db"
     chroma_collection: str = "guidelines"
     retrieval_top_k: int = 3

@@ -1,10 +1,10 @@
-import base64
-import concurrent.futures
 import json
 import re
 import time
 from dataclasses import dataclass
 from typing import Any, get_args
+
+import httpx
 
 from app.config import get_settings
 from app.models import (
@@ -18,14 +18,9 @@ from app.models import (
 )
 from app.retriever import RetrievedGuideline, retrieve_relevant_guidelines
 
-# ── Retry / timeout configuration ────────────────────────────────────
-_LLM_TIMEOUT_SECONDS = 120       # per-call timeout for Ollama chat
-_LLM_MAX_RETRIES = 2             # retry count (total attempts = 1 + retries)
-_LLM_RETRY_BACKOFF = 1.5         # multiplier for exponential backoff
-
 
 class LLMError(RuntimeError):
-    """Raised when the Ollama triage model cannot produce a valid response."""
+    """Raised when the LLM triage model cannot produce a valid response."""
 
 
 @dataclass(frozen=True)
@@ -129,7 +124,7 @@ def rag_response(
     except Exception:
         guidelines = []  # proceed without retrieval context
 
-    raw_content = _chat_with_ollama(
+    raw_content = _chat_completion(
         model=settings.llm_model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -363,77 +358,57 @@ def _format_patient_context(patient_context: PatientContext | None) -> str:
     return ", ".join(values) if values else "Not provided"
 
 
-def _chat_with_ollama(
-    model: str,
-    messages: list[dict[str, str]],
-    images: list[str] | None = None,
-) -> str:
-    try:
-        from ollama import chat as ollama_chat
-    except ImportError as exc:
-        raise LLMError("The Ollama Python package is not installed.") from exc
-
-    # Embed images in the last message dict (ollama Python client 0.6.x API)
-    if images:
-        messages = [dict(m) for m in messages]  # shallow copy
-        messages[-1]["images"] = images
+def _chat_completion(model: str, messages: list[dict[str, str]]) -> str:
+    settings = get_settings()
+    url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
+    body = {
+        "model": model,
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        "temperature": settings.llm_temperature,
+        "max_tokens": settings.llm_max_tokens,
+    }
 
     last_exc: Exception | None = None
-    for attempt in range(_LLM_MAX_RETRIES + 1):
+    for attempt in range(settings.llm_max_retries + 1):
         try:
-            return _call_ollama_with_timeout(
-                ollama_chat, model, messages, images
-            )
+            with httpx.Client(timeout=settings.llm_timeout_seconds) as client:
+                response = client.post(url, json=body)
+            if 400 <= response.status_code < 500:
+                raise LLMError(
+                    f"LLM request rejected with HTTP {response.status_code}: "
+                    f"{response.text.strip()[:200]}"
+                )
+            response.raise_for_status()
+            content = _extract_message_content(response.json())
+            if not content:
+                raise LLMError("LLM returned an empty response.")
+            return content
         except LLMError:
-            raise  # non-transient — propagate immediately
+            raise
         except Exception as exc:
             last_exc = exc
-            if attempt < _LLM_MAX_RETRIES:
-                delay = _LLM_RETRY_BACKOFF ** attempt
+            if attempt < settings.llm_max_retries:
+                delay = settings.llm_retry_backoff ** attempt
                 time.sleep(delay)
                 continue
 
     raise LLMError(
-        f"Ollama chat request failed after {_LLM_MAX_RETRIES + 1} attempts."
+        f"LLM chat request failed after {settings.llm_max_retries + 1} attempts."
     ) from last_exc
-
-
-def _call_ollama_with_timeout(
-    ollama_chat,
-    model: str,
-    messages: list[dict[str, str]],
-    images: list[str] | None,
-) -> str:
-    """Execute the blocking ollama.chat() call with a timeout guard."""
-
-    def _do_chat():
-        return ollama_chat(
-            model=model,
-            messages=messages,
-            format="json",
-            options={"temperature": 0, "num_predict": 256},
-        )
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(_do_chat)
-        try:
-            response = future.result(timeout=_LLM_TIMEOUT_SECONDS)
-        except concurrent.futures.TimeoutError:
-            raise LLMError(
-                f"Ollama chat request timed out after {_LLM_TIMEOUT_SECONDS}s."
-            )
-
-    content = _extract_message_content(response)
-    if not content:
-        raise LLMError("Ollama returned an empty response.")
-    return content
 
 
 def _extract_message_content(response: Any) -> str:
     if isinstance(response, dict):
-        message = response.get("message", {})
-        if isinstance(message, dict):
-            return str(message.get("content", ""))
+        choices = response.get("choices", [])
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message", {})
+                if isinstance(message, dict):
+                    return str(message.get("content", ""))
+                if hasattr(message, "content"):
+                    return str(message.content)
 
     message = getattr(response, "message", None)
     if isinstance(message, dict):
@@ -451,21 +426,21 @@ def _parse_json_payload(raw_content: str) -> dict[str, Any]:
         start = raw_content.find("{")
         end = raw_content.rfind("}")
         if start == -1 or end == -1 or start >= end:
-            raise LLMError("Ollama response was not valid JSON.")
+            raise LLMError("LLM response was not valid JSON.")
         try:
             payload = json.loads(raw_content[start : end + 1])
         except json.JSONDecodeError as exc:
-            raise LLMError("Ollama response was not valid JSON.") from exc
+            raise LLMError("LLM response was not valid JSON.") from exc
 
     if not isinstance(payload, dict):
-        raise LLMError("Ollama response JSON must be an object.")
+        raise LLMError("LLM response JSON must be an object.")
     return payload
 
 
 def _require_text(value: Any, field_name: str) -> str:
     text = str(value or "").strip()
     if not text:
-        raise LLMError(f"Ollama response missing required field '{field_name}'.")
+        raise LLMError(f"LLM response missing required field '{field_name}'.")
     return text
 
 
@@ -478,7 +453,7 @@ def _normalize_ats_category(value: Any) -> ATSCategory:
         if category in ATS_VALUES:
             return category
     raise LLMError(
-        f"Ollama response contained an invalid ATS category: '{text}'. "
+        f"LLM response contained an invalid ATS category: '{text}'. "
         f"Expected one of ATS-1 through ATS-5."
     )
 
@@ -486,7 +461,7 @@ def _normalize_ats_category(value: Any) -> ATSCategory:
 def _normalize_confidence(value: Any) -> Confidence:
     confidence = str(value or "").strip().lower()
     if confidence not in CONFIDENCE_VALUES:
-        raise LLMError("Ollama response contained an invalid confidence.")
+        raise LLMError("LLM response contained an invalid confidence.")
     return confidence
 
 
@@ -494,35 +469,16 @@ def vision_response(
     image_bytes: bytes,
     patient_context: PatientContext | None = None,
 ) -> VisionResult:
-    """Run MedGemma multimodal inference on a medical image.
+    """Vision inference stub — migration to llama.cpp deferred.
 
-    Encodes the image as base64, sends it alongside a text prompt to the
-    same Ollama model used for text triage, and parses the JSON response.
+    Returns a placeholder VisionResult so that the triage pipeline
+    degrades gracefully when an image is supplied.
     """
-    settings = get_settings()
-    image_b64 = base64.b64encode(image_bytes).decode("ascii")
-    patient_context_text = _format_patient_context(patient_context)
-
-    user_prompt = (
-        f"Analyze the attached medical image.\n\n"
-        f"Patient context: {patient_context_text}"
+    return VisionResult(
+        risk="insufficient confidence",
+        confidence=None,
+        rationale="Vision inference migration deferred — placeholder mode active.",
     )
-
-    raw_content = _chat_with_ollama(
-        model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": settings.vision_system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        images=[image_b64],
-    )
-    payload = _parse_json_payload(raw_content)
-
-    risk = _normalize_vision_risk(payload.get("risk"))
-    confidence = _normalize_vision_confidence(payload.get("confidence"))
-    rationale = _require_text(payload.get("rationale"), "rationale")
-
-    return VisionResult(risk=risk, confidence=confidence, rationale=rationale)
 
 
 def _normalize_vision_risk(value: Any) -> str:
@@ -539,7 +495,7 @@ def _normalize_vision_risk(value: Any) -> str:
     }
     risk = aliases.get(normalized, text)
     if risk not in {"High-Risk", "Low-Risk", "insufficient confidence"}:
-        raise LLMError("Ollama response contained an invalid vision risk.")
+        raise LLMError("LLM response contained an invalid vision risk.")
     return risk
 
 
@@ -549,7 +505,7 @@ def _normalize_vision_confidence(value: Any) -> float | None:
     try:
         confidence = float(value)
     except (TypeError, ValueError):
-        raise LLMError("Ollama response contained an invalid vision confidence.")
+        raise LLMError("LLM response contained an invalid vision confidence.")
     if not (0 <= confidence <= 1):
         raise LLMError("Vision confidence must be between 0 and 1.")
     return confidence

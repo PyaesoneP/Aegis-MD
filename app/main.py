@@ -2,8 +2,9 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -171,7 +172,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not request.app.state.health_limiter.allow(client_ip):
             return JSONResponse(status_code=429, content={"error": "Too many requests"})
 
-        text_model_status, text_model_detail = _check_ollama_health()
+        text_model_status, text_model_detail = _check_llm_health(settings)
         retrieval_status, retrieval_detail = _check_retrieval_health(settings)
 
         # ── Readiness probe: return 503 until all critical deps are ok ──
@@ -242,7 +243,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             400: {"model": BlockedResponse},
             413: {"description": "Request body too large"},
             429: {"model": BlockedResponse},
-            503: {"description": "RAG or Ollama dependency unavailable"},
+            503: {"description": "RAG or LLM dependency unavailable"},
         },
     )
     async def triage(
@@ -508,18 +509,33 @@ _DASHBOARD_HTML = """
 """
 
 
-def _check_ollama_health() -> tuple[str, str]:
+def _check_llm_health(settings: Settings) -> tuple[str, str]:
     try:
-        from ollama import chat  # noqa: F401
-    except ImportError:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(f"{settings.llm_base_url.rstrip('/')}/models")
+            resp.raise_for_status()
+    except Exception:
         return (
             "degraded",
-            "Ollama package is not installed or unavailable.",
+            f"LLM endpoint unreachable at {settings.llm_base_url}",
         )
-    return (
-        "ok",
-        "Ollama package is installed and available.",
-    )
+
+    served = _served_model_names(resp.json())
+    detail = f"LLM endpoint reachable at {settings.llm_base_url}"
+    if served:
+        detail += f" (serving: {', '.join(served)})"
+    return ("ok", detail)
+
+
+def _served_model_names(payload: Any) -> list[str]:
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+    return [
+        item["id"]
+        for item in data
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
 
 
 def _check_retrieval_health(settings: Settings) -> tuple[str, str]:
