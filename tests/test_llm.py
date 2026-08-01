@@ -621,7 +621,7 @@ class TestVitalsNormalityNoteLLM:
 
 
 class TestRagResponse:
-    def test_parses_valid_ollama_response(self):
+    def test_parses_valid_llm_response(self):
         fake_raw = (
             'Some prefix {"ats_category":"ATS-3",'
             '"rationale":"Moderate urgency based on clinical features.",'
