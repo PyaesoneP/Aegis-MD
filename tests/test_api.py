@@ -78,10 +78,10 @@ def test_health_reports_degraded_retrieval_when_chroma_unavailable(client, monke
     assert "Chroma retrieval unavailable" in payload["components"]["retrieval"]["detail"]
 
 
-def test_health_reports_degraded_text_model_when_ollama_package_missing(client, monkeypatch):
+def test_health_reports_degraded_text_model_when_llm_unreachable(client, monkeypatch):
     monkeypatch.setattr(
-        "app.main._check_ollama_health",
-        lambda: ("degraded", "Ollama package is not installed or unavailable."),
+        "app.main._check_llm_health",
+        lambda settings: ("degraded", "LLM endpoint unreachable at http://localhost:8080/v1"),
     )
 
     response = client.get("/health")
@@ -89,7 +89,7 @@ def test_health_reports_degraded_text_model_when_ollama_package_missing(client, 
     assert response.status_code == 200
     payload = response.json()
     assert payload["components"]["text_model"]["status"] == "degraded"
-    assert "Ollama package is not installed or unavailable." in payload["components"]["text_model"]["detail"]
+    assert "LLM endpoint unreachable" in payload["components"]["text_model"]["detail"]
 
 
 def test_valid_text_only_triage_matches_contract(client):
