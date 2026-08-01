@@ -13,6 +13,7 @@ from app.security import (
     check_patient_context,
     detect_prompt_injection,
     get_client_ip,
+    image_mime_type,
     normalize_text,
     sanitize_text,
     score_text,
@@ -389,6 +390,22 @@ class TestValidateImageBytes:
         # GIF magic bytes should be rejected (only JPEG/PNG allowed)
         result = validate_image_bytes(b"GIF89a" + b"\x00" * 100)
         assert result.verdict == SecurityVerdict.BLOCK
+
+
+class TestImageMimeType:
+    def test_jpeg_magic_returns_jpeg(self):
+        content = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"\x00" * 10
+        assert image_mime_type(content) == "image/jpeg"
+
+    def test_png_magic_returns_png(self):
+        content = bytes([0x89, 0x50, 0x4E, 0x47]) + b"\x00" * 10
+        assert image_mime_type(content) == "image/png"
+
+    def test_unknown_content_defaults_to_png(self):
+        assert image_mime_type(b"This is not an image at all.") == "image/png"
+
+    def test_empty_content_defaults_to_png(self):
+        assert image_mime_type(b"") == "image/png"
 
 
 # ===========================================================================

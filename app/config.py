@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     llm_retry_backoff: float = 1.5
     llm_temperature: float = 0.0
     llm_max_tokens: int = 256
+    vision_max_tokens: int = 1024
     chroma_path: str = "data/chroma/chroma_db"
     chroma_collection: str = "guidelines"
     retrieval_top_k: int = 3

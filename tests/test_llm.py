@@ -1,9 +1,11 @@
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import httpx
 import pytest
 
+from app.config import get_settings
 from app.llm import (
     LLMError,
     _build_retrieval_query,
@@ -95,6 +97,40 @@ def test_chat_completion_success():
     with patch("app.llm.httpx.Client", return_value=mock_client):
         result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
     assert "ATS-3" in result
+
+
+def _make_capturing_client():
+    """Mock httpx.Client that records the posted JSON body."""
+    import unittest.mock as m
+
+    captured: dict[str, Any] = {}
+
+    def post_side_effect(url, json=None, **kwargs):
+        captured["json"] = json
+        return _make_mock_response({
+            "choices": [{"message": {"content": '{"ok": true}'}}],
+        }, 200)
+
+    mock_client = m.Mock()
+    mock_client.post = m.Mock(side_effect=post_side_effect)
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+    return mock_client, captured
+
+
+def test_chat_completion_uses_max_tokens_override():
+    mock_client, captured = _make_capturing_client()
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        _chat_completion("test-model", [{"role": "user", "content": "hi"}], max_tokens=1024)
+    assert captured["json"]["max_tokens"] == 1024
+    assert captured["json"]["model"] == "test-model"
+
+
+def test_chat_completion_uses_default_max_tokens_when_unset():
+    mock_client, captured = _make_capturing_client()
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert captured["json"]["max_tokens"] == get_settings().llm_max_tokens
 
 
 def test_chat_completion_empty_content_raises():
@@ -262,34 +298,120 @@ def test_normalize_vision_confidence_non_numeric():
 
 
 # ---------------------------------------------------------------------------
-# vision_response — stub behavior (migration deferred)
+# vision_response — real inference via llama.cpp (mocked _chat_completion)
 # ---------------------------------------------------------------------------
 
 
-def test_vision_response_returns_placeholder():
-    result = vision_response(b"\x89PNG fake image bytes")
+class TestVisionResponse:
+    def test_valid_json_returns_vision_result(self):
+        fake_raw = (
+            '{"risk": "High-Risk", "confidence": 0.87, '
+            '"rationale": "Wound appears infected with surrounding erythema."}'
+        )
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            result = vision_response(b"\xff\xd8\xff fake jpeg")
 
-    assert isinstance(result, VisionResult)
-    assert result.risk == "insufficient confidence"
-    assert result.confidence is None
-    assert "placeholder mode active" in result.rationale
+        assert isinstance(result, VisionResult)
+        assert result.risk == "High-Risk"
+        assert result.confidence == 0.87
+        assert "erythema" in result.rationale
 
+    def test_accepts_risk_alias_and_null_confidence(self):
+        fake_raw = (
+            '{"risk": "high risk", "confidence": null, '
+            '"rationale": "Image not sufficiently clear."}'
+        )
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            result = vision_response(b"fake")
 
-def test_vision_response_ignores_patient_context():
-    """Stub ignores patient_context argument gracefully."""
-    result = vision_response(
-        b"fake",
-        patient_context=PatientContext(age=45, sex="female"),
-    )
-    assert result.risk == "insufficient confidence"
-    assert "placeholder mode active" in result.rationale
+        assert result.risk == "High-Risk"
+        assert result.confidence is None
 
+    def test_invalid_json_raises(self):
+        with patch("app.llm._chat_completion", return_value="not json"):
+            with pytest.raises(LLMError):
+                vision_response(b"fake")
 
-def test_vision_response_does_not_call_llm():
-    """Verify no LLM calls are made — vision is a stub."""
-    with patch("app.llm._chat_completion", side_effect=AssertionError("should not be called")):
-        result = vision_response(b"fake")
-    assert result.risk == "insufficient confidence"
+    def test_missing_rationale_raises(self):
+        fake_raw = '{"risk": "Low-Risk", "confidence": 0.5}'
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            with pytest.raises(LLMError, match="rationale"):
+                vision_response(b"fake")
+
+    def test_invalid_risk_raises(self):
+        fake_raw = '{"risk": "critical", "confidence": 0.5, "rationale": "unclear"}'
+        with patch("app.llm._chat_completion", return_value=fake_raw):
+            with pytest.raises(LLMError):
+                vision_response(b"fake")
+
+    def test_request_shape_embeds_image_url_data_uri(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages, max_tokens=None):
+            captured["model"] = model
+            captured["messages"] = messages
+            captured["max_tokens"] = max_tokens
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor abrasion."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\x89PNG fake")
+
+        assert captured["messages"][0]["role"] == "system"
+        assert captured["max_tokens"] == get_settings().vision_max_tokens
+        assert captured["max_tokens"] > get_settings().llm_max_tokens
+        user_content = captured["messages"][1]["content"]
+        assert isinstance(user_content, list)
+        parts = {part["type"]: part for part in user_content}
+        assert parts["text"]["text"].startswith("Analyze the attached medical image.")
+        url = parts["image_url"]["image_url"]["url"]
+        assert url.startswith("data:image/png;base64,")
+
+    def test_request_shape_jpeg_mime(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages, max_tokens=None):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\xff\xd8\xff fake jpeg")
+
+        user_content = captured["messages"][1]["content"]
+        image_url = next(p for p in user_content if p["type"] == "image_url")
+        url = image_url["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+
+    def test_request_shape_includes_patient_context(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages, max_tokens=None):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(
+                b"\x89PNG fake",
+                patient_context=PatientContext(age=45, sex="female"),
+            )
+
+        user_content = captured["messages"][1]["content"]
+        text_part = next(p for p in user_content if p["type"] == "text")
+        assert "age=45" in text_part["text"]
+        assert "sex=female" in text_part["text"]
+
+    def test_request_shape_no_patient_context(self):
+        captured: dict[str, Any] = {}
+
+        def fake_chat(model, messages, max_tokens=None):
+            captured["messages"] = messages
+            return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
+
+        with patch("app.llm._chat_completion", side_effect=fake_chat):
+            vision_response(b"\x89PNG fake")
+
+        user_content = captured["messages"][1]["content"]
+        text_part = next(p for p in user_content if p["type"] == "text")
+        assert "Patient context: Not provided" in text_part["text"]
 
 
 # ===========================================================================
@@ -537,7 +659,7 @@ class TestVitalsNormalityNoteLLM:
 
 
 class TestRagResponse:
-    def test_parses_valid_ollama_response(self):
+    def test_parses_valid_llm_response(self):
         fake_raw = (
             'Some prefix {"ats_category":"ATS-3",'
             '"rationale":"Moderate urgency based on clinical features.",'

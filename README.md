@@ -172,7 +172,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | **LLM** | MedGemma-1.5 (4B, Q4_K_XL quantized, 3.4 GB) via Ollama (configurable via `Aegis_LLM_MODEL`). Note: The default in `app/config.py` is `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL`. |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
 | **Vector DB** | ChromaDB (persistent on disk, initialized via `data/chroma/chunk.py`) |
-| **Vision** | Ollama multimodal (same model as LLM), base64 image encoding |
+| **Vision** | MedGemma multimodal (same model as LLM), base64 `image_url` data URI served via llama.cpp `--mmproj` (projector file: `unsloth/medgemma-1.5-4b-it-GGUF` → `mmproj-BF16.gguf`) |
 | **Security** | Scored heuristics (pass/warn/block), 16+ injection patterns, Unicode defense, burst-aware rate limiting, circuit breaker, security headers |
 | **Monitoring** | Prometheus client, custom HTML dashboard |
 | **Deployment** | Docker, Google Cloud Run |
@@ -226,6 +226,12 @@ export Aegis_VISION_ENABLED=false
 
 If you prefer to run a local GGUF model directly with another runtime, place model files under `./models/` and update `Aegis_LLM_MODEL` accordingly.
 
+Vision inference requires llama-server launched with the multimodal projector matching the model. Both files ship in `unsloth/medgemma-1.5-4b-it-GGUF`:
+
+```bash
+llama-server -m medgemma-1.5-4b-it-<quant>.gguf --mmproj mmproj-BF16.gguf
+```
+
 Guideline PDFs remain under `./data/guidelines/` and are chunked/embedded by running the `data/chroma/chunk.py` script. This script must be executed once to prepare the ChromaDB collection.
 
 ### 4. Run the FastAPI server locally
@@ -261,6 +267,7 @@ Backend environment variables:
 | `Aegis_CHROMA_COLLECTION` | `guidelines` | Chroma collection name for guideline chunks |
 | `Aegis_RETRIEVAL_TOP_K` | `3` | Number of guideline chunks to retrieve per query |
 | `Aegis_VISION_ENABLED` | `true` | Enable/disable multimodal vision inference |
+| `Aegis_VISION_MAX_TOKENS` | `1024` | Max tokens for vision inference responses (must exceed `Aegis_LLM_MAX_TOKENS`; MedGemma's thinking block truncates vision JSON at 256) |
 | `Aegis_MAX_RATIONALE_CHARS` | `4000` | Max characters for triage rationale output |
 | `Aegis_MAX_DISCLAIMER_CHARS` | `500` | Max characters for medical disclaimer output |
 | `Aegis_LOG_MAX_BYTES` | `10485760` | Max bytes per security log file (10 MB) |
