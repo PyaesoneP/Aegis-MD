@@ -2,8 +2,39 @@ from langchain_community.document_loaders import PyPDFLoader
 from pathlib import Path
 import chromadb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import json
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+# ── Quality assessment gate ───────────────────────────────────────────
+
+ASSESSMENT_PATH = Path("data/guidelines/assessment.json")
+
+
+def load_assessment() -> tuple[dict[str, dict], dict[str, dict]]:
+    """Load assessment results from a single file read.
+
+    Returns (documents, approved) where ``documents`` is the full
+    assessment record map and ``approved`` contains only records whose
+    status is "approved".
+
+    Raises FileNotFoundError if assessment.json does not exist,
+    requiring the user to run assess.py first.
+    """
+    if not ASSESSMENT_PATH.exists():
+        raise FileNotFoundError(
+            f"{ASSESSMENT_PATH} not found. "
+            f"Run 'python data/guidelines/assess.py' first to assess documents."
+        )
+    data = json.loads(ASSESSMENT_PATH.read_text())
+    documents = data["documents"]
+    approved = {
+        fname: rec
+        for fname, rec in documents.items()
+        if rec["status"] == "approved"
+    }
+    return documents, approved
+
 
 # ── Document registry ─────────────────────────────────────────────────
 # Maps a normalized filename substring to tier and citation metadata.
@@ -185,6 +216,9 @@ def main():
     all_metadatas: list[dict] = []
     files_processed = 0
     files_skipped = 0
+    files_gate_skipped = 0
+    files_rejected = 0
+    files_conditional = 0
     total_chunks = 0
 
     pdf_files = sorted(
@@ -196,10 +230,24 @@ def main():
         print("No PDF files found in data/guidelines/")
         return
 
+    full_assessment, approved = load_assessment()
     print(f"Found {len(pdf_files)} PDF file(s) in data/guidelines/")
+    print(f"Approved for indexing: {len(approved)}")
     print()
 
     for file_path in pdf_files:
+        if file_path.name not in approved:
+            files_gate_skipped += 1
+            reason = "not in assessment"
+            if file_path.name in full_assessment:
+                rec = full_assessment[file_path.name]
+                reason = f"status={rec['status']}"
+                if rec["status"] == "rejected":
+                    files_rejected += 1
+                elif rec["status"] == "conditional":
+                    files_conditional += 1
+            print(f"  SKIP (assessment): {file_path.name} — {reason}")
+            continue
         print(f"Processing: {file_path.name}")
         result = process_pdf(file_path)
         if result is None:
@@ -265,11 +313,14 @@ def main():
     print()
     print("=" * 60)
     print("Indexing complete:")
-    print(f"  Files processed: {files_processed}")
-    print(f"  Files skipped:   {files_skipped}")
-    print(f"  Total chunks:    {total_chunks}")
-    print("  Collection:      guidelines")
-    print("  Storage path:    data/chroma/chroma_db")
+    print(f"  Files processed:     {files_processed}")
+    print(f"  Files skipped:       {files_skipped}")
+    print(f"  Files gate-skipped:  {files_gate_skipped}")
+    print(f"    Rejected:          {files_rejected}")
+    print(f"    Conditional:       {files_conditional}")
+    print(f"  Total chunks:        {total_chunks}")
+    print("  Collection:          guidelines")
+    print("  Storage path:        data/chroma/chroma_db")
     print("=" * 60)
 
 
