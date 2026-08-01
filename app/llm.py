@@ -374,6 +374,11 @@ def _chat_completion(model: str, messages: list[dict[str, str]]) -> str:
         try:
             with httpx.Client(timeout=settings.llm_timeout_seconds) as client:
                 response = client.post(url, json=body)
+            if 400 <= response.status_code < 500:
+                raise LLMError(
+                    f"LLM request rejected with HTTP {response.status_code}: "
+                    f"{response.text.strip()[:200]}"
+                )
             response.raise_for_status()
             content = _extract_message_content(response.json())
             if not content:

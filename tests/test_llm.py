@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from app.llm import (
@@ -104,18 +105,47 @@ def test_chat_completion_empty_content_raises():
             _chat_completion("test-model", [{"role": "user", "content": "hi"}])
 
 
-def test_chat_completion_http_error_raises():
+def test_chat_completion_4xx_rejected_without_retry():
+    mock_resp = _make_mock_response(None, 400)
+    mock_resp.text = "model 'x' not found"
+    mock_client = _make_mock_client(lambda: mock_resp)
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        with pytest.raises(LLMError, match="HTTP 400"):
+            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert mock_client.post.call_count == 1
+
+
+def test_chat_completion_5xx_raises_after_retries():
     mock_client = _make_mock_client(lambda: _make_mock_response(None, 500))
-    with patch("app.llm.httpx.Client", return_value=mock_client):
-        with pytest.raises(LLMError):
-            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    with patch("app.llm.time.sleep", return_value=None):
+        with patch("app.llm.httpx.Client", return_value=mock_client):
+            with pytest.raises(LLMError, match="attempts"):
+                _chat_completion("test-model", [{"role": "user", "content": "hi"}])
 
 
-def test_chat_completion_timeout_raises():
-    mock_client = _make_mock_client(lambda: _make_mock_response(None, 504))
-    with patch("app.llm.httpx.Client", return_value=mock_client):
-        with pytest.raises(LLMError):
-            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+def test_chat_completion_timeout_retries_then_success():
+    import unittest.mock as m
+
+    call_count = [0]
+
+    def post_side_effect(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= 1:
+            raise httpx.TimeoutException("Read timed out")
+        return _make_mock_response({
+            "choices": [{"message": {"content": '{"ats_category":"ATS-2","rationale":"ok","confidence":"medium"}'}}],
+        }, 200)
+
+    mock_client = m.Mock()
+    mock_client.post = m.Mock(side_effect=post_side_effect)
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+
+    with patch("app.llm.time.sleep", return_value=None):
+        with patch("app.llm.httpx.Client", return_value=mock_client):
+            result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert "ATS-2" in result
+    assert call_count[0] == 2
 
 
 def test_chat_completion_retry_then_success():
@@ -136,17 +166,19 @@ def test_chat_completion_retry_then_success():
     mock_client.__enter__ = m.Mock(return_value=mock_client)
     mock_client.__exit__ = m.Mock(return_value=False)
 
-    with patch("app.llm.httpx.Client", return_value=mock_client):
-        result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    with patch("app.llm.time.sleep", return_value=None):
+        with patch("app.llm.httpx.Client", return_value=mock_client):
+            result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
     assert "ATS-2" in result
     assert call_count[0] == 2
 
 
 def test_chat_completion_exhaust_retries_raises():
     mock_client = _make_mock_client(lambda: _make_mock_response(None, 500))
-    with patch("app.llm.httpx.Client", return_value=mock_client):
-        with pytest.raises(LLMError, match="attempts"):
-            _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    with patch("app.llm.time.sleep", return_value=None):
+        with patch("app.llm.httpx.Client", return_value=mock_client):
+            with pytest.raises(LLMError, match="attempts"):
+                _chat_completion("test-model", [{"role": "user", "content": "hi"}])
     raw = 'prefix {"ats_category":"ATS-3","rationale":"safe","confidence":"low"} suffix'
     payload = _parse_json_payload(raw)
 
@@ -500,7 +532,7 @@ class TestVitalsNormalityNoteLLM:
 
 
 # ===========================================================================
-# rag_response — pipeline integration (mocked Ollama)
+# rag_response — pipeline integration (mocked LLM)
 # ===========================================================================
 
 

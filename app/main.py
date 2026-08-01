@@ -2,7 +2,7 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -517,12 +517,25 @@ def _check_llm_health(settings: Settings) -> tuple[str, str]:
     except Exception:
         return (
             "degraded",
-            "LLM endpoint unreachable at " f"{settings.llm_base_url}",
+            f"LLM endpoint unreachable at {settings.llm_base_url}",
         )
-    return (
-        "ok",
-        "LLM endpoint reachable at " f"{settings.llm_base_url}",
-    )
+
+    served = _served_model_names(resp.json())
+    detail = f"LLM endpoint reachable at {settings.llm_base_url}"
+    if served:
+        detail += f" (serving: {', '.join(served)})"
+    return ("ok", detail)
+
+
+def _served_model_names(payload: Any) -> list[str]:
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+    return [
+        item["id"]
+        for item in data
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
 
 
 def _check_retrieval_health(settings: Settings) -> tuple[str, str]:

@@ -151,6 +151,11 @@ class TestEnvironmentOverrides:
         s = Settings()
         assert s.llm_max_retries == 5
 
+    def test_env_var_overrides_llm_retry_backoff(self, monkeypatch):
+        monkeypatch.setenv("Aegis_LLM_RETRY_BACKOFF", "2.0")
+        s = Settings()
+        assert s.llm_retry_backoff == 2.0
+
     def test_env_var_overrides_llm_temperature(self, monkeypatch):
         monkeypatch.setenv("Aegis_LLM_TEMPERATURE", "0.7")
         s = Settings()
