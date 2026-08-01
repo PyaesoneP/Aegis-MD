@@ -5,6 +5,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+from app.config import get_settings
 from app.llm import (
     LLMError,
     _build_retrieval_query,
@@ -96,6 +97,40 @@ def test_chat_completion_success():
     with patch("app.llm.httpx.Client", return_value=mock_client):
         result = _chat_completion("test-model", [{"role": "user", "content": "hi"}])
     assert "ATS-3" in result
+
+
+def _make_capturing_client():
+    """Mock httpx.Client that records the posted JSON body."""
+    import unittest.mock as m
+
+    captured: dict[str, Any] = {}
+
+    def post_side_effect(url, json=None, **kwargs):
+        captured["json"] = json
+        return _make_mock_response({
+            "choices": [{"message": {"content": '{"ok": true}'}}],
+        }, 200)
+
+    mock_client = m.Mock()
+    mock_client.post = m.Mock(side_effect=post_side_effect)
+    mock_client.__enter__ = m.Mock(return_value=mock_client)
+    mock_client.__exit__ = m.Mock(return_value=False)
+    return mock_client, captured
+
+
+def test_chat_completion_uses_max_tokens_override():
+    mock_client, captured = _make_capturing_client()
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        _chat_completion("test-model", [{"role": "user", "content": "hi"}], max_tokens=1024)
+    assert captured["json"]["max_tokens"] == 1024
+    assert captured["json"]["model"] == "test-model"
+
+
+def test_chat_completion_uses_default_max_tokens_when_unset():
+    mock_client, captured = _make_capturing_client()
+    with patch("app.llm.httpx.Client", return_value=mock_client):
+        _chat_completion("test-model", [{"role": "user", "content": "hi"}])
+    assert captured["json"]["max_tokens"] == get_settings().llm_max_tokens
 
 
 def test_chat_completion_empty_content_raises():
@@ -312,15 +347,18 @@ class TestVisionResponse:
     def test_request_shape_embeds_image_url_data_uri(self):
         captured: dict[str, Any] = {}
 
-        def fake_chat(model, messages):
+        def fake_chat(model, messages, max_tokens=None):
             captured["model"] = model
             captured["messages"] = messages
+            captured["max_tokens"] = max_tokens
             return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor abrasion."}'
 
         with patch("app.llm._chat_completion", side_effect=fake_chat):
             vision_response(b"\x89PNG fake")
 
         assert captured["messages"][0]["role"] == "system"
+        assert captured["max_tokens"] == get_settings().vision_max_tokens
+        assert captured["max_tokens"] > get_settings().llm_max_tokens
         user_content = captured["messages"][1]["content"]
         assert isinstance(user_content, list)
         parts = {part["type"]: part for part in user_content}
@@ -331,7 +369,7 @@ class TestVisionResponse:
     def test_request_shape_jpeg_mime(self):
         captured: dict[str, Any] = {}
 
-        def fake_chat(model, messages):
+        def fake_chat(model, messages, max_tokens=None):
             captured["messages"] = messages
             return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
 
@@ -346,7 +384,7 @@ class TestVisionResponse:
     def test_request_shape_includes_patient_context(self):
         captured: dict[str, Any] = {}
 
-        def fake_chat(model, messages):
+        def fake_chat(model, messages, max_tokens=None):
             captured["messages"] = messages
             return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
 
@@ -364,7 +402,7 @@ class TestVisionResponse:
     def test_request_shape_no_patient_context(self):
         captured: dict[str, Any] = {}
 
-        def fake_chat(model, messages):
+        def fake_chat(model, messages, max_tokens=None):
             captured["messages"] = messages
             return '{"risk":"Low-Risk","confidence":0.4,"rationale":"Minor."}'
 

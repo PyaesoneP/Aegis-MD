@@ -98,6 +98,13 @@ class TestDefaultSettings:
         s = Settings()
         assert s.llm_max_tokens == 256
 
+    def test_vision_max_tokens_default(self):
+        s = Settings()
+        # Must stay above llm_max_tokens: MedGemma emits a thinking block
+        # before the vision JSON, so 256 truncates vision responses.
+        assert s.vision_max_tokens == 1024
+        assert s.vision_max_tokens > s.llm_max_tokens
+
 
 class TestEnvironmentOverrides:
     def test_env_var_overrides_allowed_origins(self, monkeypatch):
@@ -165,6 +172,11 @@ class TestEnvironmentOverrides:
         monkeypatch.setenv("Aegis_LLM_MAX_TOKENS", "512")
         s = Settings()
         assert s.llm_max_tokens == 512
+
+    def test_env_var_overrides_vision_max_tokens(self, monkeypatch):
+        monkeypatch.setenv("Aegis_VISION_MAX_TOKENS", "1536")
+        s = Settings()
+        assert s.vision_max_tokens == 1536
 
 
 class TestPropertyParsing:

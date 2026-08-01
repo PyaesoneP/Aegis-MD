@@ -360,7 +360,11 @@ def _format_patient_context(patient_context: PatientContext | None) -> str:
     return ", ".join(values) if values else "Not provided"
 
 
-def _chat_completion(model: str, messages: list[dict[str, Any]]) -> str:
+def _chat_completion(
+    model: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int | None = None,
+) -> str:
     settings = get_settings()
     url = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
     body = {
@@ -368,7 +372,7 @@ def _chat_completion(model: str, messages: list[dict[str, Any]]) -> str:
         "messages": messages,
         "response_format": {"type": "json_object"},
         "temperature": settings.llm_temperature,
-        "max_tokens": settings.llm_max_tokens,
+        "max_tokens": max_tokens or settings.llm_max_tokens,
     }
 
     last_exc: Exception | None = None
@@ -498,7 +502,11 @@ def vision_response(
         {"role": "user", "content": content},
     ]
 
-    raw = _chat_completion(settings.llm_model, messages)
+    raw = _chat_completion(
+        settings.llm_model,
+        messages,
+        max_tokens=settings.vision_max_tokens,
+    )
     payload = _parse_json_payload(raw)
 
     return VisionResult(
