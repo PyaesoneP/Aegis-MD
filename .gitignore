@@ -20,6 +20,7 @@ frontend/.env.*.local
 
 # Source Guidelines
 data/guidelines/*.pdf
+data/guidelines/assessment.json
 
 # Chromadb
 data/chroma/chroma_db/

@@ -9,10 +9,16 @@ PDF files in this directory are **not committed to GitHub**. Redistribution righ
 | Metric | Value |
 |--------|-------|
 | Total documents | 18 |
+| Indexed (approved by quality gate) | 15 |
+| Staged, pending review (conditional) | 3 |
 | Tier 1 (triage-specific) | 4 |
 | Tier 2 (specialty ED-relevant) | 6 |
 | Tier 3 (supplementary) | 8 |
 | Max file size | 50 MB per document |
+
+**Indexed vs staged:** only documents that pass the [assessment pipeline](#assessment-pipeline)
+with status `approved` are indexed into ChromaDB. The 3 `conditional` documents below
+are staged locally but excluded from retrieval until manually reviewed and promoted.
 
 ## Full Inventory
 
@@ -22,7 +28,7 @@ PDF files in this directory are **not committed to GitHub**. Redistribution righ
 |---|---:|---|---|---|---|
 | `emergency_triage_education_kit_-_second_edition.pdf` | 5.9 MB | ACSQHC Australia, 2024 | ETEK 2nd Ed | CC BY 3.0 AU | Active |
 | `Emergency Department Triage.pdf` | 320 KB | ACEP/ENA, 2025 | ACEP/ENA Triage Policy | ACEP/ENA Policy | Active |
-| `97517282-Triage-in-the-Hospital.pdf` | — | Scribd (original publisher unknown) | Triage in the Hospital | Scribd terms | Active |
+| `97517282-Triage-in-the-Hospital.pdf` | — | Scribd (original publisher unknown) | Triage in the Hospital | Scribd terms | Gated (pending review) |
 | `Emergency_Severity_Index_Handbook.pdf` | — | ENA, 2020 | ESI Handbook | ENA Policy | Active |
 
 ### Tier 2 — Specialty Guidelines (ED-Relevant)
@@ -33,14 +39,14 @@ PDF files in this directory are **not committed to GitHub**. Redistribution righ
 | `iitt_adult.pdf` | 53 KB | WHO/ICRC/MSF, 2020 | WHO IITT | WHO Open Access | Active |
 | `NICE-head-injury.pdf` | 320 KB | NICE (CG176, updated to NG232), 2023 | NICE Head Injury NG232 | OGL v3.0 | Active |
 | `Six-to-Help-Fix-Acute-Medicine-Guidance-for-improving-in-hospital-flow-FINAL-V1-July-2023.pdf` | 630 KB | GIRFT/SAM, 2023 | Six to Help Acute Medicine | NHS/GIRFT open | Active |
-| `Management_of_Acute_Pain_in_Adults_2024_v1.pdf` | 764 KB | RCEM, 2024 | RCEM Acute Pain | RCEM | Active |
+| `Management_of_Acute_Pain_in_Adults_2024_v1.pdf` | 764 KB | RCEM, 2024 | RCEM Acute Pain | RCEM | Gated (pending review) |
 | `Management-of-patients-with-Haemophilia-in-Emergency-Departments.pdf` | 409 KB | NF MASAC 257, 2019 | Haemophilia Emergency Management | NF open access | Active |
 
 ### Tier 3 — Supplementary Guidelines
 
 | Filename | Size | Source | Citation Label | License | Status |
 |---|---:|---|---|---|---|
-| `RCEM_Best_Practice_Invasive_Procedures_in_the_Emergency_Department.pdf` | 404 KB | RCEM, 2024 | RCEM Invasive Procedures | RCEM | Active |
+| `RCEM_Best_Practice_Invasive_Procedures_in_the_Emergency_Department.pdf` | 404 KB | RCEM, 2024 | RCEM Invasive Procedures | RCEM | Gated (pending review) |
 | `9789241548373_eng.pdf` | — | WHO SEARO, 2021 | WHO IMAI Hospital Care | CC BY-NC-SA 3.0 IGO | Active |
 | `pocket_booklet_hospital_care_0.pdf` | 11 MB | WHO, 2nd Ed | WHO Hospital Care Children | CC BY-NC-SA | Active |
 | `pediatrics.pdf` | — | ACEP, 2003 (Ann Emerg Med) | ACEP Pediatric Fever | ACEP Policy | Active |
@@ -85,6 +91,46 @@ For each PDF, confirm:
 
 Do not expose raw PDF contents directly through the API. The backend should return short citation labels and generated rationale, not large copied passages.
 
+## Assessment Pipeline
+
+Before chunking, run the quality assessment gate to evaluate each PDF:
+
+```bash
+python data/guidelines/assess.py
+```
+
+This evaluates every PDF against five criteria and writes `assessment.json` (gitignored).
+
+### Scoring Rubric
+
+Each document receives a quality score (1–5) and a status:
+
+| Criterion | Pass (1.0) | Partial (0.5) | Fail (0.0) |
+|---|---|---|---|
+| **Authority** | Gov/academic/professional body | Recognized content, unknown publisher | Unknown origin |
+| **Currency** | ≤10 yrs old or foundational | — | Older, not foundational |
+| **Relevance** | Triage-specific or ED-relevant | — | Unrelated |
+| **Structure** | Text extractable (avg ≥100 chars/page) | — | Image-only / unreadable |
+| **License** | Non-commercial research confirmed | Terms need review | Incompatible |
+
+### Statuses
+
+- **Approved** — passes all criteria. Indexed automatically.
+- **Conditional** — minor concerns (outdated, license to verify, unknown publisher). Requires manual review before indexing.
+- **Rejected** — fails a hard gate (unrecognized authority, irrelevant, unreadable, incompatible license). Excluded from indexing.
+
+### Promoting a Conditional Document
+
+`assessment.json` is **generated** by `assess.py` and is gitignored — edits to it are overwritten on the next run and lost on a fresh clone. The durable way to promote a conditional document is to change its metadata in the `DOCUMENT_ASSESSMENT` registry in `assess.py`, then re-run `assess.py`:
+
+- **Outdated but foundational** — set `"foundational": True` (e.g., ESI Handbook, NHLBI Asthma EPR-3, WHO Pocket Book, ACEP Pediatric Fever).
+- **License verified** — set `"license_score": 1.0` once non-commercial research use is confirmed (e.g., the RCEM documents).
+- **Publisher confirmed** — set `"authority_score": 1.0` when the original publisher is identified.
+
+### Assessment Registry
+
+The `DOCUMENT_ASSESSMENT` dict in `assess.py` holds per-document metadata (authority, year, foundational flag, relevance, license). Its normalized pattern keys must stay in sync with `DOCUMENT_REGISTRY` in `data/chroma/chunk.py` — `tests/test_assessment.py` enforces this. New PDFs added to the corpus without a registry entry default to `rejected` status: register the document in both registries before expecting it to be indexed.
+
 ## Chunking Pipeline
 
 Run the chunking script to build or rebuild the ChromaDB collection:
@@ -94,7 +140,8 @@ python data/chroma/chunk.py
 ```
 
 This script will:
-- Process all `.pdf` files in `data/guidelines/`
+- Load `assessment.json` from the assessment pipeline (run `assess.py` first)
+- Index only `approved` documents; skip `conditional` and `rejected`
 - Skip files larger than 50 MB
 - Enrich chunk metadata with source URL, citation label, and document tier
 - Clear and rebuild the ChromaDB collection
