@@ -258,6 +258,48 @@ def resolve_document_metadata(filename: str) -> dict:
     }
 
 
+def build_chunk_metadata(
+    file_metadata: dict, page_number: int
+) -> dict:
+    """Build a Chroma-compatible metadata dict for one chunk.
+
+    All values are guaranteed to be non-None (Chroma rejects None).  Keys
+    whose values are empty or None are omitted entirely so that old indexes
+    without the new fields can still be queried — missing keys simply mean
+    "not enriched yet".
+
+    Parameters
+    ----------
+    file_metadata : dict
+        Output of ``resolve_document_metadata()``.
+    page_number : int
+        Page number (already defaulted to -1 when None).
+
+    Returns
+    -------
+    dict
+        Metadata ready for Chroma ``add(metadatas=...)``.
+    """
+    meta: dict = {
+        "source": file_metadata.get("citation_label", Path().stem),
+        "page_number": page_number,
+        "source_url": file_metadata["source_url"],
+        "citation_label": file_metadata["citation_label"],
+        "document_tier": file_metadata["document_tier"],
+    }
+    # Optional fields — omit when empty/None (Chroma rejects None)
+    if file_metadata.get("year_published") is not None:
+        meta["year_published"] = file_metadata["year_published"]
+    if file_metadata.get("ats_level"):
+        meta["ats_level"] = file_metadata["ats_level"]
+    if file_metadata.get("symptom_tags"):
+        meta["symptom_tags"] = file_metadata["symptom_tags"]
+    # document_type is always present (even "unknown" for fallback)
+    if dt := file_metadata.get("document_type"):
+        meta["document_type"] = dt
+    return meta
+
+
 def process_pdf(file_path: Path) -> tuple[list, dict] | None:
     """Load and chunk a single PDF file.
 
@@ -338,20 +380,7 @@ def main():
             page = split.metadata.get("page")
             page_number = page if page is not None else -1
             chunk_id = f"{file_path.stem}_p{page_number}_c{i}"
-            meta = {
-                "source": file_path.name,
-                "page_number": page_number,
-                "source_url": file_metadata["source_url"],
-                "citation_label": file_metadata["citation_label"],
-                "document_tier": file_metadata["document_tier"],
-                "document_type": file_metadata["document_type"],
-            }
-            if file_metadata["year_published"] is not None:
-                meta["year_published"] = file_metadata["year_published"]
-            if file_metadata["ats_level"]:
-                meta["ats_level"] = file_metadata["ats_level"]
-            if file_metadata["symptom_tags"]:
-                meta["symptom_tags"] = file_metadata["symptom_tags"]
+            meta = build_chunk_metadata(file_metadata, page_number)
             all_ids.append(chunk_id)
             all_docs.append(split.page_content)
             all_metadatas.append(meta)
