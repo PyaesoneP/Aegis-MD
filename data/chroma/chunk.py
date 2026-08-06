@@ -43,122 +43,183 @@ def load_assessment() -> tuple[dict[str, dict], dict[str, dict]]:
 
 
 # ── Document registry ─────────────────────────────────────────────────
-# Maps a normalized filename substring to tier and citation metadata.
+# Maps a normalized filename substring to tier, citation, and retrieval-
+# routing metadata.
 # Filenames are normalized (lowercased, "_" and "-" collapsed to spaces)
 # before matching, so a single space-form key covers every separator
 # variant a source file may use. Keep one entry per document.
 
 DOCUMENT_REGISTRY: dict[str, dict] = {
+    # Each entry: tier, citation_label, source_url, year_published and the
+    # retrieval-routing fields ats_level / symptom_tags / document_type.
+    # ats_level is the subset of ATS categories (ATS-1..5) the document most
+    # informs; symptom_tags are lowercase presentation keywords; document_type
+    # describes the kind of source. These enrich chunk metadata so downstream
+    # retrieval can filter by urgency band and presentation.
     # Tier 1 — Triage-specific frameworks
     "emergency triage education kit": {
         "tier": "tier_1",
         "citation_label": "ETEK 2nd Ed",
         "source_url": "https://www.safetyandquality.gov.au/resources/emergency-triage-education-kit-etek-second-edition",
-        "publication_year": 2024,
+        "year_published": 2024,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4", "ATS-5"],
+        "symptom_tags": ["general_presentation", "vital_signs", "consciousness", "pain"],
+        "document_type": "triage_framework",
     },
     "emergency department triage": {
         "tier": "tier_1",
         "citation_label": "ACEP/ENA Triage Policy",
         "source_url": "https://www.ena.org/sites/default/files/2025-08/Emergency%20Department%20Triage.pdf",
-        "publication_year": 2025,
+        "year_published": 2025,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4", "ATS-5"],
+        "symptom_tags": ["triage_scale", "general_presentation"],
+        "document_type": "position_statement",
     },
     "triage in the hospital": {
         "tier": "tier_1",
         "citation_label": "Triage in the Hospital",
         "source_url": "https://www.scribd.com/document/97517282/Triage-in-the-Hospital",
-        "publication_year": None,
+        "year_published": None,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4", "ATS-5"],
+        "symptom_tags": ["general_presentation"],
+        "document_type": "educational_reference",
     },
     "emergency severity index": {
         "tier": "tier_1",
         "citation_label": "ESI Handbook",
         "source_url": "https://media.emscimprovement.center/documents/Emergency_Severity_Index_Handbook.pdf",
-        "publication_year": 2020,
+        "year_published": 2020,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4", "ATS-5"],
+        "symptom_tags": ["triage_scale", "resource_utilization", "general_presentation"],
+        "document_type": "handbook",
     },
-    # Tier 2 — Specialty guidelines (ED-relevant)
+    # Tier 2 — Specialty care (ED-relevant)
     "basic emergency care": {
         "tier": "tier_2",
         "citation_label": "WHO BEC",
         "source_url": "https://hlh.who.int/docs/librariesprovider4/clinical-care/who-icrc-basic-emergency-care.pdf",
-        "publication_year": 2018,
+        "year_published": 2018,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3"],
+        "symptom_tags": ["airway", "breathing", "circulation", "shock", "trauma", "seizure"],
+        "document_type": "clinical_guideline",
     },
     "iitt": {
         "tier": "tier_2",
         "citation_label": "WHO IITT",
         "source_url": "https://cdn.who.int/media/docs/default-source/integrated-health-services-(ihs)/csy/iitt/iitt_adult.pdf",
-        "publication_year": 2020,
+        "year_published": 2020,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4"],
+        "symptom_tags": ["vital_signs", "airway", "breathing", "circulation"],
+        "document_type": "triage_tool",
     },
     "head injury": {
         "tier": "tier_2",
         "citation_label": "NICE Head Injury NG232",
         "source_url": "https://www.nice.org.uk/guidance/ng232",
-        "publication_year": 2023,
+        "year_published": 2023,
+        "ats_level": ["ATS-2", "ATS-3"],
+        "symptom_tags": ["head_injury", "trauma", "vomiting", "loss_of_consciousness", "anticoagulant"],
+        "document_type": "clinical_guideline",
     },
     "acute medicine": {
         "tier": "tier_2",
         "citation_label": "Six to Help Acute Medicine",
         "source_url": "https://gettingitrightfirsttime.co.uk/wp-content/uploads/2023/07/Six-to-Help-Fix-Acute-Medicine-Guidance-for-improving-in-hospital-flow-FINAL-V1-July-2023.pdf",
-        "publication_year": 2023,
+        "year_published": 2023,
+        "ats_level": ["ATS-3", "ATS-4"],
+        "symptom_tags": ["hospital_flow", "clinical_deterioration"],
+        "document_type": "operational_guidance",
     },
     "acute pain": {
         "tier": "tier_2",
         "citation_label": "RCEM Acute Pain",
         "source_url": "https://www.rcem.ac.uk/Publications/",
-        "publication_year": 2024,
+        "year_published": 2024,
+        "ats_level": ["ATS-3", "ATS-4"],
+        "symptom_tags": ["pain", "analgesia"],
+        "document_type": "clinical_guideline",
     },
     "haemophilia": {
         "tier": "tier_2",
         "citation_label": "Haemophilia Emergency Management",
         "source_url": "https://www.bleeding.org/healthcare-professionals/guidelines-on-care/masac-documents/masac-document-257-guidelines-for-emergency-department-management-of-individuals-with-hemophilia-and-other-bleeding-disorders",
-        "publication_year": 2019,
+        "year_published": 2019,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3"],
+        "symptom_tags": ["bleeding", "anticoagulant", "haemophilia"],
+        "document_type": "clinical_guideline",
     },
     # Tier 3 — Supplementary guidelines
     "hospital care": {
         "tier": "tier_3",
         "citation_label": "WHO Hospital Care Children",
         "source_url": "https://www.who.int/publications/i/item/9789241549902",
-        "publication_year": 2013,
+        "year_published": 2013,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3", "ATS-4"],
+        "symptom_tags": ["paediatric", "fever", "emergency_signs"],
+        "document_type": "clinical_guideline",
     },
     "9789241548373": {
         "tier": "tier_3",
         "citation_label": "WHO IMAI Hospital Care",
         "source_url": "https://iris.who.int/bitstream/handle/10665/350623/9789290228882-eng.pdf",
-        "publication_year": 2021,
+        "year_published": 2021,
+        "ats_level": ["ATS-2", "ATS-3", "ATS-4"],
+        "symptom_tags": ["severe_illness", "airway", "breathing", "circulation"],
+        "document_type": "clinical_manual",
     },
     "invasive procedures": {
         "tier": "tier_3",
         "citation_label": "RCEM Invasive Procedures",
         "source_url": "https://www.rcem.ac.uk/Publications/",
-        "publication_year": 2024,
+        "year_published": 2024,
+        "ats_level": ["ATS-3", "ATS-4", "ATS-5"],
+        "symptom_tags": ["procedures", "analgesia", "sedation"],
+        "document_type": "procedural_guideline",
     },
     "5506cpg1": {
         "tier": "tier_3",
         "citation_label": "MOH CPG General",
         "source_url": "https://www.moh.gov.sg/hpp/doctors/guidelines/cpg_medical",
-        "publication_year": 2017,
+        "year_published": 2017,
+        "ats_level": ["ATS-4", "ATS-5"],
+        "symptom_tags": ["general_practice"],
+        "document_type": "clinical_guideline",
     },
     "hypertension": {
         "tier": "tier_3",
         "citation_label": "MOH Hypertension",
         "source_url": "http://www.smj.org.sg/sites/default/files/07_CPG-298122017_Hypertension.pdf",
-        "publication_year": 2017,
+        "year_published": 2017,
+        "ats_level": ["ATS-2", "ATS-3", "ATS-4"],
+        "symptom_tags": ["hypertension", "blood_pressure", "cardiac"],
+        "document_type": "clinical_guideline",
     },
     "sti guidelines": {
         "tier": "tier_3",
         "citation_label": "STI Guidelines 2021",
         "source_url": "https://www.cdc.gov/std/treatment-guidelines/STI-Guidelines-2021.pdf",
-        "publication_year": 2021,
+        "year_published": 2021,
+        "ats_level": ["ATS-4", "ATS-5"],
+        "symptom_tags": ["sti", "sexual_health", "rash", "genital"],
+        "document_type": "clinical_guideline",
     },
     "asthma": {
         "tier": "tier_3",
         "citation_label": "NHLBI Asthma EPR-3",
         "source_url": "https://www.nhlbi.nih.gov/guidelines/asthma",
-        "publication_year": 2007,
+        "year_published": 2007,
+        "ats_level": ["ATS-1", "ATS-2", "ATS-3"],
+        "symptom_tags": ["asthma", "wheeze", "breathlessness", "respiratory"],
+        "document_type": "clinical_guideline",
     },
     "pediatrics": {
         "tier": "tier_3",
         "citation_label": "ACEP Pediatric Fever",
         "source_url": "https://www.acep.org/siteassets/uploads/uploaded-files/acep/clinical-and-practice-management/clinical-policies/pediatrics.pdf",
-        "publication_year": 2003,
+        "year_published": 2003,
+        "ats_level": ["ATS-2", "ATS-3", "ATS-4"],
+        "symptom_tags": ["paediatric", "fever", "infant"],
+        "document_type": "clinical_policy",
     },
 }
 
@@ -169,7 +230,7 @@ def normalize_filename(filename: str) -> str:
 
 
 def resolve_document_metadata(filename: str) -> dict:
-    """Return tier/citation metadata based on filename pattern matching.
+    """Return tier/citation/retrieval-routing metadata by filename pattern matching.
 
     Falls back to generic tier_3 metadata when no pattern matches.
     """
@@ -180,14 +241,20 @@ def resolve_document_metadata(filename: str) -> dict:
                 "source_url": metadata["source_url"],
                 "citation_label": metadata["citation_label"],
                 "document_tier": metadata["tier"],
-                "publication_year": metadata["publication_year"],
+                "year_published": metadata["year_published"],
+                "ats_level": metadata["ats_level"],
+                "symptom_tags": metadata["symptom_tags"],
+                "document_type": metadata["document_type"],
             }
     # Default fallback for unregistered documents
     return {
         "source_url": "N/A",
         "citation_label": Path(filename).stem,
         "document_tier": "tier_3",
-        "publication_year": None,
+        "year_published": None,
+        "ats_level": [],
+        "symptom_tags": [],
+        "document_type": "unknown",
     }
 
 
@@ -277,9 +344,14 @@ def main():
                 "source_url": file_metadata["source_url"],
                 "citation_label": file_metadata["citation_label"],
                 "document_tier": file_metadata["document_tier"],
+                "document_type": file_metadata["document_type"],
             }
-            if file_metadata["publication_year"] is not None:
-                meta["publication_year"] = file_metadata["publication_year"]
+            if file_metadata["year_published"] is not None:
+                meta["year_published"] = file_metadata["year_published"]
+            if file_metadata["ats_level"]:
+                meta["ats_level"] = file_metadata["ats_level"]
+            if file_metadata["symptom_tags"]:
+                meta["symptom_tags"] = file_metadata["symptom_tags"]
             all_ids.append(chunk_id)
             all_docs.append(split.page_content)
             all_metadatas.append(meta)

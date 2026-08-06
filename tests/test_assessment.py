@@ -282,7 +282,7 @@ class TestRegistrySync:
         for pattern in DOCUMENT_ASSESSMENT:
             assert (
                 DOCUMENT_ASSESSMENT[pattern].get("publication_year")
-                == DOCUMENT_REGISTRY[pattern]["publication_year"]
+                == DOCUMENT_REGISTRY[pattern]["year_published"]
             ), f"publication_year mismatch for '{pattern}'"
 
     def test_every_registry_entry_resolves(self) -> None:
