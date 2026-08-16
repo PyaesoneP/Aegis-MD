@@ -24,8 +24,9 @@ class RetrievedGuideline:
 
     @property
     def citation(self) -> str:
-        # Prefer the curated citation label emitted by chunk.py; fall back to
-        # the raw filename for chunks indexed without enriched metadata.
+        # The ``source`` field stores the citation_label (not the filename), so
+        # it can be used directly.  The fallback to ``Path(self.source).name``
+        # exists only for old chunks indexed before this convention was adopted.
         label = self.citation_label or (
             Path(self.source).name if self.source else "Unknown source"
         )

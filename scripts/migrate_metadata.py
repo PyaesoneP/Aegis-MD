@@ -2,11 +2,11 @@
 """
 In-place metadata enrichment for the Chroma "guidelines" collection.
 
-Reads the existing collection and, for every chunk, reconstructs the original
-``file_metadata`` dict from the chunk's current Chroma metadata, pulls the
-page number, and recomputes the enriched metadata via
-``build_chunk_metadata(file_metadata, page_number)``. Only the fields produced
-by the enrichment (e.g. the new ``source`` routing key) are written back with
+Reads the existing collection and, for every chunk, looks up the authoritative
+``DOCUMENT_REGISTRY`` by ``source_url``, reconstructs the ``file_metadata``
+dict from the registry entry, pulls the page number, and recomputes the
+enriched metadata via ``build_chunk_metadata(file_metadata, page_number)``.
+Only the fields produced by the enrichment are written back with
 ``collection.update(ids=..., metadatas=...)`` — the stored documents and the
 embeddings are left untouched.
 
@@ -19,64 +19,59 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import sys
 
 import chromadb
 
-from data.chroma.chunk import build_chunk_metadata
+from data.chroma.chunk import (
+    DOCUMENT_REGISTRY,
+    build_chunk_metadata,
+    resolve_document_metadata,
+)
 
 CHROMA_PATH = "data/chroma/chroma_db"
 COLLECTION_NAME = "guidelines"
 
-# Non-None keys that build_chunk_metadata may output. Used to distinguish
-# enrichment fields from arbitrary legacy keys we must not touch.
-ENRICHED_FIELDS = frozenset(
-    {
-        "source",
-        "page_number",
-        "source_url",
-        "citation_label",
-        "document_tier",
-        "year_published",
-        "ats_level",
-        "symptom_tags",
-        "document_type",
-    }
-)
-
-# Fields that build_chunk_metadata consumes to reconstruct file_metadata.
-FILE_METADATA_KEYS = frozenset(
-    {
-        "source_url",
-        "citation_label",
-        "document_tier",
-        "year_published",
-        "ats_level",
-        "symptom_tags",
-        "document_type",
-    }
-)
-
 
 def reconstruct_file_metadata(current: dict) -> dict:
-    """Reconstruct the original file_metadata dict from chunk metadata.
+    """Reconstruct the original file_metadata dict from the DOCUMENT_REGISTRY.
 
-    ``build_chunk_metadata`` omits empty fields (e.g. a document with no
-    ``year_published``), so a missing key here must map back to its neutral
-    value — most importantly ``None`` for ``year_published`` and ``[]`` for the
-    list fields — rather than being dropped entirely. Otherwise the recomputed
-    metadata would differ from the originally computed one.
+    Reads the ``source_url`` from the chunk's stored metadata and uses it to
+    look up the authoritative registry entry.  This is critical: reading from
+    the chunk's own stored metadata (``current``) is useless for pre-PR
+    indexes because the enrichment fields (``ats_level``, ``symptom_tags``,
+    ``year_published``) do not yet exist there — they would all come back as
+    neutral values (``[]``, ``None``) and the migration would enrich nothing.
+
+    Falls back to ``resolve_document_metadata`` when ``source_url`` is not in
+    the registry.
     """
-    return {
-        "source_url": current["source_url"],
-        "citation_label": current["citation_label"],
-        "document_tier": current["document_tier"],
-        "year_published": current.get("year_published"),
-        "ats_level": current.get("ats_level", []),
-        "symptom_tags": current.get("symptom_tags", []),
-        "document_type": current.get("document_type", "unknown"),
-    }
+    source_url = current.get("source_url", "")
+    # Try to find the matching registry entry by source_url
+    registry_entry = None
+    for pattern, entry in DOCUMENT_REGISTRY.items():
+        if entry["source_url"] == source_url:
+            registry_entry = entry
+            break
+
+    if registry_entry is not None:
+        # Authoritative lookup — this is what pre-PR indexes need
+        return {
+            "source_url": registry_entry["source_url"],
+            "citation_label": registry_entry["citation_label"],
+            "document_tier": registry_entry["tier"],
+            "year_published": registry_entry.get("year_published"),
+            "ats_level": registry_entry.get("ats_level", []),
+            "symptom_tags": registry_entry.get("symptom_tags", []),
+            "document_type": registry_entry.get("document_type", "unknown"),
+        }
+
+    # Fallback: use resolve_document_metadata by source_url stem
+    # Extract filename from URL for pattern matching
+    stem = source_url.rstrip("/").split("/")[-1]
+    if stem.lower().endswith(".pdf"):
+        stem = stem[:-4]
+    return resolve_document_metadata(stem)
 
 
 def parse_cli(argv: list[str]) -> tuple[bool, bool]:

@@ -92,12 +92,10 @@ support retrieval routing and explainability, in addition to the core `source`,
 | `symptom_tags` | `list[str]` | Lowercase presentation keywords (`head_injury`, `paediatric`, `hypertension`, …). Omitted when empty. |
 | `document_type` | `str` | Kind of source (`triage_framework`, `clinical_guideline`, `handbook`, …). Always present, even as `unknown` for the fallback. |
 
-**Delimited-encoding caveat.** The two list fields (`ats_level`, `symptom_tags`)
-are a potential delimited string rather than a JSON array once round-tripped
-through Chroma, so consumers (and the migration script) must parse them back
-into lists. Because `build_chunk_metadata` omits empty/None fields, a missing
-key means "not enriched" — readers should map it to its neutral value
-(`None` / `[]` / `unknown`), which is exactly what
+**List fields.** The two list fields (`ats_level`, `symptom_tags`) are stored
+as native Python lists and Chroma 1.5.9 round-trips them as lists (not as
+delimited strings). A missing key means "not enriched" — readers should map it
+to its neutral value (`None` / `[]` / `unknown`), which is exactly what
 `scripts/migrate_metadata.py`'s `reconstruct_file_metadata` does.
 
 ## Before Indexing

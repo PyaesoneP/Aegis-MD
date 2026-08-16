@@ -1,9 +1,9 @@
 """Unit tests for chunk metadata enrichment (issue #44).
 
-Covers ``build_chunk_metadata`` (empty/None handling, delimited-encoding of the
-list fields, and registry fallbacks) and ``resolve_document_metadata`` (every
-registry entry exposes the four enrichment fields ``year_published``,
-``ats_level``, ``symptom_tags`` and ``document_type``).
+Covers ``build_chunk_metadata`` (empty/None handling, list field preservation,
+and registry fallbacks) and ``resolve_document_metadata`` (every registry entry
+exposes the four enrichment fields ``year_published``, ``ats_level``,
+``symptom_tags`` and ``document_type``).
 """
 
 from __future__ import annotations
@@ -116,10 +116,10 @@ class TestBuildChunkMetadata:
 # ── build_chunk_metadata: delimited-encoding caveat ────────────────────────
 
 
-class TestBuildChunkMetadataDelimitedEncoding:
-    """List fields are stored as lists by the builder; Chroma round-trip may
-    later surface them as delimited strings, which is the consumer's concern.
-    Here we pin the builder's onward contract: list values stay lists.
+class TestBuildChunkMetadataListPreservation:
+    """List fields are stored as lists by the builder; Chroma 1.5.9 round-trips
+    them as native lists.  Here we pin the builder's onward contract: list
+    values stay lists.
     """
 
     def test_ats_level_preserved_as_list(self) -> None:

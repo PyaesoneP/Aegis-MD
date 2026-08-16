@@ -281,7 +281,7 @@ def build_chunk_metadata(
         Metadata ready for Chroma ``add(metadatas=...)``.
     """
     meta: dict = {
-        "source": file_metadata.get("citation_label", Path().stem),
+        "source": file_metadata["citation_label"],
         "page_number": page_number,
         "source_url": file_metadata["source_url"],
         "citation_label": file_metadata["citation_label"],
