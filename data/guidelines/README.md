@@ -74,10 +74,29 @@ Commit only lightweight metadata such as this file, `SOURCES.md`, extraction scr
 The backend retrieval flow:
 
 1. Reads local PDFs from this directory.
-2. Extracts text into chunks with enriched metadata (source, page, citation label, document tier, publication year).
+2. Extracts text into chunks with enriched metadata (source, page, citation label, document tier, plus the enrichment fields `year_published`, `ats_level`, `symptom_tags`, `document_type`).
 3. Builds a local ChromaDB index from those chunks.
 4. Stores generated vector data in a gitignored directory (`data/chroma/chroma_db/`).
 5. Returns top-k guideline chunks to the triage orchestration layer.
+
+### Enrichment Metadata Fields
+
+`chunk.py` decorates each chunk with **four** built-from-the-registry fields that
+support retrieval routing and explainability, in addition to the core `source`,
+`page_number`, `source_url`, and `document_tier` metadata:
+
+| Field | Type | Content |
+|---|---|---|
+| `year_published` | `int \| None` | Year the document was published (from `DOCUMENT_REGISTRY`). Omitted when unknown/`None` rather than stored as a Chroma-invalid null. |
+| `ats_level` | `list[str]` | Subset of ATS categories (`ATS-1`…`ATS-5`) the document most informs. Omitted when empty. |
+| `symptom_tags` | `list[str]` | Lowercase presentation keywords (`head_injury`, `paediatric`, `hypertension`, …). Omitted when empty. |
+| `document_type` | `str` | Kind of source (`triage_framework`, `clinical_guideline`, `handbook`, …). Always present, even as `unknown` for the fallback. |
+
+**List fields.** The two list fields (`ats_level`, `symptom_tags`) are stored
+as native Python lists and Chroma 1.5.9 round-trips them as lists (not as
+delimited strings). A missing key means "not enriched" — readers should map it
+to its neutral value (`None` / `[]` / `unknown`), which is exactly what
+`scripts/migrate_metadata.py`'s `reconstruct_file_metadata` does.
 
 ## Before Indexing
 
@@ -143,6 +162,6 @@ This script will:
 - Load `assessment.json` from the assessment pipeline (run `assess.py` first)
 - Index only `approved` documents; skip `conditional` and `rejected`
 - Skip files larger than 50 MB
-- Enrich chunk metadata with source URL, citation label, and document tier
+- Enrich chunk metadata with source URL, citation label, document tier, and the four routing fields `year_published`, `ats_level`, `symptom_tags`, `document_type` (see [Enrichment Metadata Fields](#enrichment-metadata-fields))
 - Clear and rebuild the ChromaDB collection
 - Print a summary of documents and chunks processed

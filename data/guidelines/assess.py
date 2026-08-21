@@ -27,7 +27,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "emergency triage education kit": {
         "authority": "Australian Commission on Safety and Quality in Health Care",
         "authority_score": 1.0,
-        "publication_year": 2024,
+        "year_published": 2024,
         "foundational": False,
         "relevance": "triage_specific",
         "license": "CC BY 3.0 AU",
@@ -37,7 +37,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "emergency department triage": {
         "authority": "ACEP / ENA",
         "authority_score": 1.0,
-        "publication_year": 2025,
+        "year_published": 2025,
         "foundational": False,
         "relevance": "triage_specific",
         "license": "ACEP/ENA policy",
@@ -47,7 +47,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "triage in the hospital": {
         "authority": "Scribd (original publisher unknown)",
         "authority_score": 0.5,
-        "publication_year": None,
+        "year_published": None,
         "foundational": False,
         "relevance": "triage_specific",
         "license": "Scribd terms (restricted)",
@@ -57,7 +57,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "emergency severity index": {
         "authority": "Emergency Nurses Association",
         "authority_score": 1.0,
-        "publication_year": 2020,
+        "year_published": 2020,
         "foundational": True,
         "relevance": "triage_specific",
         "license": "ENA policy",
@@ -68,7 +68,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "basic emergency care": {
         "authority": "WHO / ICRC / IFEM",
         "authority_score": 1.0,
-        "publication_year": 2018,
+        "year_published": 2018,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "CC BY-NC-SA 3.0 IGO",
@@ -78,7 +78,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "iitt": {
         "authority": "WHO / ICRC / MSF",
         "authority_score": 1.0,
-        "publication_year": 2020,
+        "year_published": 2020,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "WHO open access",
@@ -88,7 +88,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "head injury": {
         "authority": "NICE (UK)",
         "authority_score": 1.0,
-        "publication_year": 2023,
+        "year_published": 2023,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "Open Government Licence v3.0",
@@ -98,7 +98,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "acute medicine": {
         "authority": "GIRFT / Society for Acute Medicine (NHS England)",
         "authority_score": 1.0,
-        "publication_year": 2023,
+        "year_published": 2023,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "NHS/GIRFT open",
@@ -108,7 +108,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "acute pain": {
         "authority": "Royal College of Emergency Medicine",
         "authority_score": 1.0,
-        "publication_year": 2024,
+        "year_published": 2024,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "RCEM (terms to verify)",
@@ -118,7 +118,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "haemophilia": {
         "authority": "National Hemophilia Foundation (MASAC)",
         "authority_score": 1.0,
-        "publication_year": 2019,
+        "year_published": 2019,
         "foundational": False,
         "relevance": "ed_relevant",
         "license": "NF open access",
@@ -129,7 +129,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "invasive procedures": {
         "authority": "Royal College of Emergency Medicine",
         "authority_score": 1.0,
-        "publication_year": 2024,
+        "year_published": 2024,
         "foundational": False,
         "relevance": "supplementary",
         "license": "RCEM (terms to verify)",
@@ -139,7 +139,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "9789241548373": {
         "authority": "WHO South-East Asia Regional Office",
         "authority_score": 1.0,
-        "publication_year": 2021,
+        "year_published": 2021,
         "foundational": False,
         "relevance": "supplementary",
         "license": "WHO open access",
@@ -149,7 +149,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "hospital care": {
         "authority": "WHO",
         "authority_score": 1.0,
-        "publication_year": 2013,
+        "year_published": 2013,
         "foundational": True,
         "relevance": "supplementary",
         "license": "CC BY-NC-SA 3.0 IGO",
@@ -159,7 +159,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "5506cpg1": {
         "authority": "Ministry of Health, Singapore",
         "authority_score": 1.0,
-        "publication_year": 2017,
+        "year_published": 2017,
         "foundational": False,
         "relevance": "supplementary",
         "license": "Singapore government publication",
@@ -169,7 +169,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "hypertension": {
         "authority": "Ministry of Health, Singapore",
         "authority_score": 1.0,
-        "publication_year": 2017,
+        "year_published": 2017,
         "foundational": False,
         "relevance": "supplementary",
         "license": "Singapore government publication",
@@ -179,7 +179,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "sti guidelines": {
         "authority": "U.S. CDC",
         "authority_score": 1.0,
-        "publication_year": 2021,
+        "year_published": 2021,
         "foundational": False,
         "relevance": "supplementary",
         "license": "Public domain (U.S. government)",
@@ -189,7 +189,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "asthma": {
         "authority": "U.S. NHLBI",
         "authority_score": 1.0,
-        "publication_year": 2007,
+        "year_published": 2007,
         "foundational": True,
         "relevance": "supplementary",
         "license": "Public domain (U.S. government)",
@@ -199,7 +199,7 @@ DOCUMENT_ASSESSMENT: dict[str, dict[str, Any]] = {
     "pediatrics": {
         "authority": "ACEP",
         "authority_score": 1.0,
-        "publication_year": 2003,
+        "year_published": 2003,
         "foundational": True,
         "relevance": "supplementary",
         "license": "ACEP clinical policy",
@@ -283,7 +283,7 @@ def score_authority(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 def score_currency(spec: dict[str, Any]) -> dict[str, Any]:
-    year = spec.get("publication_year")
+    year = spec.get("year_published")
     if year is None:
         return {"score": 0.0, "reason": "Publication year unknown"}
     age = CURRENT_YEAR - year
@@ -345,7 +345,7 @@ def assess_document(file_path: Path) -> dict[str, Any]:
         spec = {
             "authority": "Not in assessment registry",
             "authority_score": 0.0,
-            "publication_year": None,
+            "year_published": None,
             "foundational": False,
             "relevance": "unrelated",
             "license": "Unknown (not in registry)",

@@ -17,11 +17,16 @@ class RetrievedGuideline:
     page_number: int | str | None
     citation_label: str | None = None
     source_url: str | None = None
+    year_published: int | None = None
+    ats_level: list[str] | None = None
+    symptom_tags: list[str] | None = None
+    document_type: str | None = None
 
     @property
     def citation(self) -> str:
-        # Prefer the curated citation label emitted by chunk.py; fall back to
-        # the raw filename for chunks indexed without enriched metadata.
+        # The ``source`` field stores the citation_label (not the filename), so
+        # it can be used directly.  The fallback to ``Path(self.source).name``
+        # exists only for old chunks indexed before this convention was adopted.
         label = self.citation_label or (
             Path(self.source).name if self.source else "Unknown source"
         )
@@ -82,6 +87,10 @@ def retrieve_relevant_guidelines(
                 page_number=metadata.get("page_number"),
                 citation_label=metadata.get("citation_label"),
                 source_url=metadata.get("source_url"),
+                year_published=metadata.get("year_published"),
+                ats_level=metadata.get("ats_level"),
+                symptom_tags=metadata.get("symptom_tags"),
+                document_type=metadata.get("document_type"),
             )
         )
 

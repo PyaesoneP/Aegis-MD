@@ -110,7 +110,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 - **ATS 1–5 classification** using the Australasian Triage Scale with time-to-treatment targets. The LLM prompt includes ATS definitions, vitals thresholds for escalation (HR > 120, SpO₂ < 92%, systolic < 90 mmHg, etc.), and risk-modifier escalation rules (age > 65, pregnancy, anticoagulants).
 - **Three-tier fallback**: Tier 1 — full RAG (retrieval + LLM); Tier 2 — LLM-only (when retrieval unavailable); Tier 3 — rule-based keyword matching (when LLM is down). The rule layer uses ATS-1, ATS-2, ATS-4, and ATS-5 keyword discriminators with ATS-3 as the default for undifferentiated presentations.
 - **Vitals normality signal**: when all recorded vitals are within normal adult ranges, a strong prompt signal pushes the LLM toward ATS-4 or ATS-5 — counteracting the model's ATS-3 anchoring bias. Suppressed for elderly patients (≥65) with comorbidities to prevent inappropriate down-triage.
-- Retrieves top-3 relevant chunks from **15 indexed open-source medical guideline PDFs** organized by tier (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). Tier 1 focuses on triage-specific frameworks; Tier 2 covers ED-relevant specialties; Tier 3 provides supplementary context. A basic retrieval quality check verifies that tier_1/tier_2 documents surface for known clinical presentations — citations are provided for explainability but full relevance scoring is not yet implemented. On Cloud Run, top_k is reduced to 1 to conserve memory.
+- Retrieves top-3 relevant chunks from **15 indexed open-source medical guideline PDFs** organized by tier (WHO, Singapore MOH, Australian ETEK, NICE, ACEP, ENA). Tier 1 focuses on triage-specific frameworks; Tier 2 covers ED-relevant specialties; Tier 3 provides supplementary context. Each chunk carries enrichment metadata — `year_published`, `ats_level`, `symptom_tags`, `document_type` — exposed on returned citations for routing and explainability. A basic retrieval quality check verifies that tier_1/tier_2 documents surface for known clinical presentations — citations are provided for explainability but full relevance scoring is not yet implemented. On Cloud Run, top_k is reduced to 1 to conserve memory.
 - Returns structured rationale, source citations, ATS triage card (category + label + time target + colour), and a mandatory medical disclaimer.
 - **Latency:** ~25–37s on CPU (Docker, 4 vCPU); ~2–3s on RTX 5070 Ti Mobile (12 GB VRAM). The CPU latency reflects a **student budget constraint** — the architecture is designed for GPU-accelerated inference.
 
@@ -171,7 +171,7 @@ This project is explicitly **not a diagnostic tool**. It is a research prototype
 | **Backend** | Python 3.12, FastAPI, Uvicorn |
 | **LLM** | MedGemma-1.5 (4B, Q4_K_XL quantized, 3.4 GB) via Ollama (configurable via `Aegis_LLM_MODEL`). Note: The default in `app/config.py` is `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:UD-Q4_K_XL`. |
 | **Embeddings** | `sentence-transformers/all-MiniLM-L6-v2` |
-| **Vector DB** | ChromaDB (persistent on disk, initialized via `data/chroma/chunk.py`) |
+| **Vector DB** | ChromaDB (persistent on disk, initialized via `data/chroma/chunk.py`; metadata enrichment on an existing index via `scripts/migrate_metadata.py`) |
 | **Vision** | MedGemma multimodal (same model as LLM), base64 `image_url` data URI served via llama.cpp `--mmproj` (projector file: `unsloth/medgemma-1.5-4b-it-GGUF` → `mmproj-BF16.gguf`) |
 | **Security** | Scored heuristics (pass/warn/block), 16+ injection patterns, Unicode defense, burst-aware rate limiting, circuit breaker, security headers |
 | **Monitoring** | Prometheus client, custom HTML dashboard |
@@ -233,6 +233,13 @@ llama-server -m medgemma-1.5-4b-it-<quant>.gguf --mmproj mmproj-BF16.gguf
 ```
 
 Guideline PDFs remain under `./data/guidelines/` and are chunked/embedded by running the `data/chroma/chunk.py` script. This script must be executed once to prepare the ChromaDB collection.
+
+To enrich an existing index's metadata with the routing fields (`year_published`, `ats_level`, `symptom_tags`, `document_type`) without rebuilding the collection, run the migration script in place:
+
+```bash
+python scripts/migrate_metadata.py            # enrich existing chunks in place
+python scripts/migrate_metadata.py --dry-run  # preview changes, write nothing
+```
 
 ### 4. Run the FastAPI server locally
 ```bash

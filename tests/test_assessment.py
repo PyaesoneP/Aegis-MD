@@ -278,12 +278,12 @@ class TestRegistrySync:
         """Every pattern in DOCUMENT_ASSESSMENT must exist in DOCUMENT_REGISTRY."""
         assert set(DOCUMENT_ASSESSMENT) == set(DOCUMENT_REGISTRY)
 
-    def test_publication_years_match(self) -> None:
+    def test_year_published_match(self) -> None:
         for pattern in DOCUMENT_ASSESSMENT:
             assert (
-                DOCUMENT_ASSESSMENT[pattern].get("publication_year")
-                == DOCUMENT_REGISTRY[pattern]["publication_year"]
-            ), f"publication_year mismatch for '{pattern}'"
+                DOCUMENT_ASSESSMENT[pattern].get("year_published")
+                == DOCUMENT_REGISTRY[pattern]["year_published"]
+            ), f"year_published mismatch for '{pattern}'"
 
     def test_every_registry_entry_resolves(self) -> None:
         """Each registry pattern must match a representative normalized filename."""
