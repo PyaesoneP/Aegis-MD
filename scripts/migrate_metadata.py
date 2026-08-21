@@ -2,13 +2,18 @@
 """
 In-place metadata enrichment for the Chroma "guidelines" collection.
 
-Reads the existing collection and, for every chunk, looks up the authoritative
-``DOCUMENT_REGISTRY`` by ``source_url``, reconstructs the ``file_metadata``
-dict from the registry entry, pulls the page number, and recomputes the
+Reads the existing collection and, for every chunk, recovers the original
+file stem from the chunk id (``{stem}_p{page}_c{index}``), resolves the
+authoritative ``DOCUMENT_REGISTRY`` entry via
+``resolve_document_metadata``, pulls the page number, and recomputes the
 enriched metadata via ``build_chunk_metadata(file_metadata, page_number)``.
-Only the fields produced by the enrichment are written back with
+Only the fields that differ are written back with
 ``collection.update(ids=..., metadatas=...)`` — the stored documents and the
 embeddings are left untouched.
+
+Resolution deliberately avoids ``source_url``: it is not a unique registry
+key (several RCEM publications share one landing page), so URL matching
+silently resolved those documents to the first matching entry.
 
 Usage:
   python scripts/migrate_metadata.py                  # enrich in place
@@ -19,12 +24,15 @@ Usage:
 
 from __future__ import annotations
 
+import re
 import sys
+from pathlib import Path
 
-import chromadb
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from data.chroma.chunk import (
-    DOCUMENT_REGISTRY,
+import chromadb  # noqa: E402
+
+from data.chroma.chunk import (  # noqa: E402
     build_chunk_metadata,
     resolve_document_metadata,
 )
@@ -33,45 +41,56 @@ CHROMA_PATH = "data/chroma/chroma_db"
 COLLECTION_NAME = "guidelines"
 
 
-def reconstruct_file_metadata(current: dict) -> dict:
-    """Reconstruct the original file_metadata dict from the DOCUMENT_REGISTRY.
+_CHUNK_ID_RE = re.compile(r"^(?P<stem>.+)_p(-?\d+)_c(\d+)$")
 
-    Reads the ``source_url`` from the chunk's stored metadata and uses it to
-    look up the authoritative registry entry.  This is critical: reading from
-    the chunk's own stored metadata (``current``) is useless for pre-PR
-    indexes because the enrichment fields (``ats_level``, ``symptom_tags``,
-    ``year_published``) do not yet exist there — they would all come back as
-    neutral values (``[]``, ``None``) and the migration would enrich nothing.
 
-    Falls back to ``resolve_document_metadata`` when ``source_url`` is not in
-    the registry.
+def extract_file_stem(chunk_id: str) -> str | None:
+    """Recover the original file stem embedded in a chunk id.
+
+    Index builds name chunks ``{stem}_p{page}_c{index}``, so the stem is
+    everything before the final ``_p{page}_c{index}`` suffix.  Greedy
+    matching keeps this correct even when the stem itself contains a
+    ``_p{n}_c{m}``-shaped substring.  Returns None when the id does not
+    follow that convention.
     """
-    source_url = current.get("source_url", "")
-    # Try to find the matching registry entry by source_url
-    registry_entry = None
-    for pattern, entry in DOCUMENT_REGISTRY.items():
-        if entry["source_url"] == source_url:
-            registry_entry = entry
-            break
+    match = _CHUNK_ID_RE.match(chunk_id)
+    if match is None:
+        return None
+    return match.group("stem")
 
-    if registry_entry is not None:
-        # Authoritative lookup — this is what pre-PR indexes need
-        return {
-            "source_url": registry_entry["source_url"],
-            "citation_label": registry_entry["citation_label"],
-            "document_tier": registry_entry["tier"],
-            "year_published": registry_entry.get("year_published"),
-            "ats_level": registry_entry.get("ats_level", []),
-            "symptom_tags": registry_entry.get("symptom_tags", []),
-            "document_type": registry_entry.get("document_type", "unknown"),
-        }
 
-    # Fallback: use resolve_document_metadata by source_url stem
-    # Extract filename from URL for pattern matching
-    stem = source_url.rstrip("/").split("/")[-1]
-    if stem.lower().endswith(".pdf"):
-        stem = stem[:-4]
+def reconstruct_file_metadata(current: dict, chunk_id: str = "") -> dict:
+    """Reconstruct the original file_metadata dict for a stored chunk.
+
+    Resolution key priority:
+      1. the file stem embedded in the chunk id — invariant across index
+         versions and unique per document;
+      2. the stored ``source`` field — the original filename in pre-PR
+         indexes, the citation label in post-PR indexes.
+
+    Re-resolving from the registry is what pre-PR indexes need: their stored
+    metadata predates the enrichment fields (``ats_level``, ``symptom_tags``,
+    ``year_published``), so reading them back from the chunk itself would
+    enrich nothing.  ``source_url`` is never used: it is not unique per
+    document (several RCEM publications share one landing page), so URL
+    matching resolved those documents to the first matching entry.
+    """
+    stem = extract_file_stem(chunk_id)
+    if stem is None:
+        stem = current.get("source") or ""
     return resolve_document_metadata(stem)
+
+
+def enrichment_delta(existing: dict, enriched: dict, reset: bool) -> dict:
+    """Compute the metadata diff to write back for one chunk.
+
+    additive mode: only fields that are absent or differ from the stored
+    value, so re-running on an already-migrated chunk yields an empty diff;
+    reset mode: every enriched field is rewritten.
+    """
+    if reset:
+        return dict(enriched)
+    return {k: v for k, v in enriched.items() if existing.get(k) != v}
 
 
 def parse_cli(argv: list[str]) -> tuple[bool, bool]:
@@ -111,20 +130,10 @@ def main() -> None:
 
     for chunk_id, existing in zip(ids, metadatas):
         existing = dict(existing or {})
-        file_metadata = reconstruct_file_metadata(existing)
+        file_metadata = reconstruct_file_metadata(existing, chunk_id)
         page_number = existing.get("page_number", -1)
         enriched = build_chunk_metadata(file_metadata, page_number)
-
-        if reset:
-            # Full recompute: overwrite all enriched fields.
-            delta = {k: v for k, v in enriched.items()}
-        else:
-            # Idempotent add: only fields that are absent or differ.
-            delta = {
-                k: v
-                for k, v in enriched.items()
-                if existing.get(k) != v
-            }
+        delta = enrichment_delta(existing, enriched, reset)
 
         if not delta:
             skipped += 1
